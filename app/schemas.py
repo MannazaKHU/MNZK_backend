@@ -1,90 +1,108 @@
-"""요청 JSON의 모양. 여기서 틀리면 FastAPI가 자동으로 400 VALIDATION_ERROR 를 돌려준다."""
+"""Validated inputs. Dates and HH:MM times are interpreted in Asia/Seoul."""
+import re
 from datetime import date, datetime, timedelta
-from typing import Literal, Optional
+from typing import Annotated, Literal
+from zoneinfo import ZoneInfo
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
-from pydantic import BaseModel, Field, field_validator
-
-
-def _check_date(v: str) -> str:
-    datetime.strptime(v, "%Y-%m-%d")  # 형식이 틀리면 ValueError
-    return v
+Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=20)]
+Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
 
 
-def _check_time(v: str) -> str:
-    datetime.strptime(v, "%H:%M")
-    return v
+def check_date(value: str):
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        raise ValueError("YYYY-MM-DD 형식으로 입력해 주세요.")
+    date.fromisoformat(value)
+    return value
 
 
-class TimeRange(BaseModel):
+def check_time(value: str):
+    if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", value):
+        raise ValueError("HH:MM 형식으로 입력해 주세요.")
+    return value
+
+
+class Input(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class TimeRange(Input):
     start: str = "10:00"
     end: str = "23:00"
+    _start = field_validator("start")(check_time)
+    _end = field_validator("end")(check_time)
 
-    _v_start = field_validator("start")(_check_time)
-    _v_end = field_validator("end")(_check_time)
+    @model_validator(mode="after")
+    def ordered(self):
+        if self.start >= self.end:
+            raise ValueError("시작 시간은 끝 시간보다 빨라야 해요.")
+        return self
 
 
-def default_dates() -> list[str]:
-    """오늘부터 7일."""
-    return [(date.today() + timedelta(days=i)).isoformat() for i in range(7)]
+def default_dates():
+    today = datetime.now(ZoneInfo("Asia/Seoul")).date()
+    return [(today + timedelta(days=i)).isoformat() for i in range(7)]
 
 
-class CreateMeetingReq(BaseModel):
-    title: str = Field(default="우리 모임", min_length=1, max_length=40)
-    members: list[str] = Field(default=[], max_length=10)
+class CreateMeetingReq(Input):
+    title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40)] = "우리 모임"
+    host_name: Name = "방장"
     candidate_dates: list[str] = Field(default_factory=default_dates, min_length=1, max_length=14)
-    time_range: TimeRange = TimeRange()
+    time_range: TimeRange = Field(default_factory=TimeRange)
     slot_minutes: Literal[30, 60] = 60
 
     @field_validator("candidate_dates")
     @classmethod
-    def check_dates(cls, v):
-        return [_check_date(d) for d in v]
+    def dates(cls, values):
+        return sorted({check_date(v) for v in values})
+
+    @model_validator(mode="after")
+    def has_full_slot(self):
+        start = datetime.strptime(self.time_range.start, "%H:%M")
+        end = datetime.strptime(self.time_range.end, "%H:%M")
+        if (end - start).total_seconds() < self.slot_minutes * 60:
+            raise ValueError("선택 범위에 최소 한 개의 시간 슬롯이 있어야 해요.")
+        return self
 
 
-class JoinReq(BaseModel):
-    name: str = Field(min_length=1, max_length=20)
+class JoinReq(Input):
+    name: Name
+    invite_code: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
 
 
-class AvailabilityReq(BaseModel):
-    name: str = Field(min_length=1, max_length=20)
-    availability: dict[str, list[str]]
+class AvailabilityReq(Input):
+    availability: dict[str, list[str]] = Field(max_length=14)
 
 
-class TextReq(BaseModel):
-    text: str = Field(min_length=1, max_length=500)
+class TextReq(Input):
+    text: Text
 
 
-class Location(BaseModel):
-    text: str
-    lat: float
-    lng: float
+class Location(Input):
+    text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+    lat: float = Field(ge=-90, le=90, allow_inf_nan=False)
+    lng: float = Field(ge=-180, le=180, allow_inf_nan=False)
 
 
-class PreferenceReq(BaseModel):
-    name: str = Field(min_length=1, max_length=20)
-    text: str = Field(min_length=1, max_length=500)
-    start_location: Optional[Location] = None
+class PreferenceReq(Input):
+    text: Text
+    start_location: Location | None = None
 
 
-class ConfirmReq(BaseModel):
+class ConfirmReq(TimeRange):
     date: str
     start: str
     end: str
+    allow_partial: bool = False
+    _date = field_validator("date")(check_date)
 
 
-class RecommendReq(BaseModel):
+class RecommendReq(Input):
     count: int = Field(default=5, ge=1, le=10)
     radius_m: int = Field(default=1000, ge=300, le=3000)
     extra_text: str = Field(default="", max_length=200)
 
 
-class QuickPerson(BaseModel):
-    name: str = Field(min_length=1, max_length=20)
-    text: str = Field(min_length=1, max_length=500)
-
-
-class QuickReq(BaseModel):
-    people: list[QuickPerson] = Field(min_length=1, max_length=10)
-    count: int = Field(default=5, ge=1, le=10)
-    radius_m: int = Field(default=1000, ge=300, le=3000)
-    extra_text: str = Field(default="", max_length=200)
+class ConfirmPlaceReq(Input):
+    place_id: str = Field(min_length=1, max_length=100)
+    revision: int = Field(ge=1, description="추천 결과를 조회했을 때의 모임 revision")

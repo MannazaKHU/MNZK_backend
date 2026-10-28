@@ -1,31 +1,36 @@
-폴더 구조 (이대로 만들기)
-
-```
-meetflow-backend/
-├── .env                  ← 키 넣는 곳 (git에 올리지 않기)
-├── .env.example
+MNZK_backend/
+├── .env.example           # 실행 설정 예시 (.env는 Git 제외)
+├── compose.yaml           # 로컬 FastAPI + PostgreSQL
+├── Dockerfile
 ├── requirements.txt
+├── requirements-dev.txt
+├── alembic.ini
+├── migrations/            # DB 스키마 변경 이력
 ├── app/
-│   ├── __init__.py       ← 빈 파일
-│   ├── main.py           ← 서버 시작점, 라우터 등록
-│   ├── config.py         ← .env 읽기
-│   ├── errors.py         ← 에러 모양 통일
-│   ├── store.py          ← 메모리 + data/meetings.json 저장
-│   ├── schemas.py        ← 요청/응답 모양(Pydantic)
-│   ├── prompts.py        ← HCX 프롬프트 + JSON 스키마 (당일 가장 많이 고칠 파일)
+│   ├── __main__.py        # 마이그레이션 → 서버 실행
+│   ├── main.py            # FastAPI, CORS, 입력 오류 처리
+│   ├── config.py          # DB·AI·지도 환경 설정
+│   ├── database.py        # SQLAlchemy 엔진·요청별 세션
+│   ├── models.py          # Meeting / Member / RecommendationRun
+│   ├── store.py           # DB 접근·토큰 확인·버전 충돌·결과 무효화
+│   ├── schemas.py         # 요청 검증
+│   ├── errors.py
+│   ├── prompts.py
 │   ├── clients/
-│   │   ├── __init__.py
-│   │   ├── hcx_client.py    ← CLOVA Studio 호출
-│   │   └── kakao_client.py  ← 카카오 로컬 검색
+│   │   ├── ai_client.py   # ChatKHU Gateway·JSON Schema 검증
+│   │   └── naver_client.py
 │   ├── services/
-│   │   ├── __init__.py
-│   │   ├── schedule_service.py   ← 겹치는 시간 계산 (AI 없음)
-│   │   ├── preference_service.py ← 자연어 → 선호 JSON, 그룹 합치기
-│   │   └── recommend_service.py  ← 중간지점 → 후보 → AI 랭킹
+│   │   ├── schedule_service.py
+│   │   ├── preference_service.py
+│   │   └── recommend_service.py
 │   └── routers/
-│       ├── __init__.py
-│       ├── meetings.py   ← /api/meetings/...
-│       └── misc.py       ← /api/recommend/quick, /api/usage, /health
-└── scripts/
-    └── smoke_test.py     ← 실제 키가 동작하는지 1분 점검
-```
+│       ├── meetings.py   # /api/meetings/{meeting_id}/...
+│       └── misc.py       # health·readiness·개발용 usage
+├── scripts/
+│   ├── setup_env.py       # .env 최초 생성
+│   ├── start.sh
+│   ├── start.ps1
+│   └── smoke_test.py      # 명시적으로 실행하는 실제 Gateway 점검
+├── tests/
+└── docs/
+    └── API.md             # 프론트 연동 계약·이전 API 변경 사항

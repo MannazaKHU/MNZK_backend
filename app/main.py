@@ -1,24 +1,28 @@
-"""서버 시작점. 실행: uvicorn app.main:app --reload"""
+"""FastAPI application. Start with python -m app (runs DB migrations first)."""
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-
 from app.config import settings
 from app.routers import meetings, misc
 
-app = FastAPI(title="Backend/new", version="1.0")
 
-# 프론트(다른 포트/도메인)에서 호출할 수 있게 허용
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+@asynccontextmanager
+async def lifespan(app):
+    settings.validate()
+    yield
 
 
-# 입력 형식 오류(422)를 명세서의 400 VALIDATION_ERROR 모양으로 바꿈
+development = settings.APP_ENV == "development"
+app = FastAPI(title="MeetFlow", version="2.0.0", lifespan=lifespan,
+              docs_url="/docs" if development else None,
+              redoc_url="/redoc" if development else None,
+              openapi_url="/openapi.json" if development else None)
+app.add_middleware(CORSMiddleware, allow_origins=settings.CORS_ORIGINS,
+                   allow_methods=["GET", "POST", "PUT"], allow_headers=["Authorization", "Content-Type"])
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_handler(request: Request, exc: RequestValidationError):
     first = exc.errors()[0] if exc.errors() else {}

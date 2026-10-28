@@ -3,7 +3,7 @@ import asyncio
 import json
 
 from app import prompts
-from app.clients import hcx_client as hcx
+from app.clients import ai_client as ai
 from app.clients import naver_client as naver
 from app.clients.naver_client import haversine_km
 from app.config import settings
@@ -23,8 +23,8 @@ async def make_queries(merged: dict, extra_text: str) -> list:
         return _rule_queries(merged)
     user = json.dumps({"그룹조건": merged, "추가요청": extra_text}, ensure_ascii=False)
     try:
-        out = await hcx.structured(prompts.QUERY_SYSTEM, user, prompts.QUERY_SCHEMA,
-                                   step="make_queries", temperature=0.3)
+        out = await ai.structured(prompts.QUERY_SYSTEM, user, prompts.QUERY_SCHEMA,
+                                   step="make_queries")
         queries = [q.strip() for q in out.get("queries", []) if q and q.strip()][:4]
         return queries or _rule_queries(merged)
     except ApiError:
@@ -37,7 +37,7 @@ def _rule_rank(merged: dict, candidates: list, count: int) -> list:
     for c in candidates:
         text = c["name"] + " " + c["category"]
         matched = [w for w in words if w in text]
-        dist = c.get("distance_m") or 1000
+        dist = c["distance_m"] if c.get("distance_m") is not None else 1000
         score = min(100, 50 + 15 * len(matched) + max(0, 20 - dist // 50))
         scored.append({"id": c["id"], "score": score, "matched": matched,
                        "reason": "그룹이 원한 조건과 가깝고 중간지점에서 가까운 곳이에요.",
@@ -53,8 +53,8 @@ async def rank(merged: dict, candidates: list, count: int, extra_text: str) -> l
              "distance_m": c.get("distance_m")} for c in candidates]
     user = json.dumps({"그룹조건": merged, "추가요청": extra_text,
                        "고를개수": count, "후보": slim}, ensure_ascii=False)
-    out = await hcx.structured(prompts.RANK_SYSTEM, user, prompts.RANK_SCHEMA,
-                               step="rank", temperature=0.2)
+    out = await ai.structured(prompts.RANK_SYSTEM, user, prompts.RANK_SCHEMA,
+                               step="rank")
     valid_ids = {c["id"] for c in candidates}
     picks, seen = [], set()
     for p in out.get("picks", []):
@@ -89,7 +89,7 @@ def _travel(name: str, loc, place: dict, route) -> dict:
             "text": text}
 
 
-async def recommend(people: list, count: int, radius_m: int, extra_text: str = "") -> dict:
+async def recommend(people: list, count: int, radius_m: int, extra_text: str = "", *, schedule: dict) -> dict:
     """people: [{"name": "보경", "preference": {...}}, ...]"""
     with_pref = [p for p in people if p.get("preference")]
     if not with_pref:
@@ -114,7 +114,9 @@ async def recommend(people: list, count: int, radius_m: int, extra_text: str = "
     center = station
 
     # 2) 검색어 -> 후보 수집
-    queries = await make_queries(merged, extra_text)
+    # Time is supplied as context, but search results do not contain verified opening hours.
+    context = json.dumps({"확정일정": schedule, "추가요청": extra_text}, ensure_ascii=False)
+    queries = await make_queries(merged, context)
     candidates = {}
     for q in queries:
         for place in await naver.search_places(q, center, radius_m):
@@ -130,7 +132,7 @@ async def recommend(people: list, count: int, radius_m: int, extra_text: str = "
     # 4) AI 랭킹 (실패하면 규칙으로 대체)
     fallback = False
     try:
-        picks = await rank(merged, filtered, count, extra_text)
+        picks = await rank(merged, filtered, count, context)
     except ApiError:
         picks, fallback = _rule_rank(merged, filtered, count), True
 
@@ -151,9 +153,13 @@ async def recommend(people: list, count: int, radius_m: int, extra_text: str = "
                   for j, (name, loc) in enumerate(travelers)]
         recs.append({"rank": i, "place": place, "score": p["score"], "reason": p["reason"],
                      "travel": travel, "travel_text": [t["text"] for t in travel],
-                     "matched": p.get("matched", []), "warnings": p.get("warnings", [])})
+                     "matched": p.get("matched", []),
+                     "warnings": list(dict.fromkeys(p.get("warnings", []) + [
+                         "확정 시간의 영업 여부와 예약 가능 여부는 확인이 필요해요.",
+                     ]))})
 
     return {
+        "schedule": schedule,
         "center": center,
         "group_summary": await group_summary(merged),
         "search_queries": queries,

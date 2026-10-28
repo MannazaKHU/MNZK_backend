@@ -1,81 +1,86 @@
-"""DB 대신 쓰는 저장소: 프로토타입이라 모임은 서버에 '하나만' 둔다.
-메모리에 두고, 바뀔 때마다 JSON 파일로 저장. 서버를 껐다 켜도 data/meetings.json 에서 다시 불러온다.
-모임을 만들지 않고 API를 불러도 기본 모임이 자동으로 생긴다."""
-import json
-import os
-import threading
-from datetime import datetime
-
-from app.config import settings
+"""Database operations and invalidation of derived meeting results."""
+import hashlib
+import secrets
+from datetime import timezone
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+from sqlalchemy.orm.exc import StaleDataError
 from app.errors import ApiError
-from app.schemas import default_dates
+from app.models import Meeting, Member
 
 MAX_MEMBERS = 10
 
-_lock = threading.Lock()
-_meeting: dict | None = None
+
+def token_digest(token: str):
+    return hashlib.sha256(token.encode()).hexdigest()
 
 
-def _load() -> None:
-    global _meeting
-    if not os.path.exists(settings.DATA_PATH):
-        return
-    with open(settings.DATA_PATH, encoding="utf-8") as f:
-        data = json.load(f)
-    if "members" in data:
-        _meeting = data
-    elif data:  # 예전 형식({모임ID: 모임}) -> 가장 최근 모임 하나만 사용
-        _meeting = max(data.values(), key=lambda m: m.get("created_at", ""))
+def new_member(name: str, *, is_host=False):
+    token = secrets.token_urlsafe(32)
+    return Member(name=name, is_host=is_host, token_digest=token_digest(token),
+                  availability={}, availability_submitted=False), token
 
 
-def save() -> None:
-    with _lock:
-        folder = os.path.dirname(settings.DATA_PATH)
-        if folder:
-            os.makedirs(folder, exist_ok=True)
-        tmp = settings.DATA_PATH + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(_meeting, f, ensure_ascii=False, indent=2)
-        os.replace(tmp, settings.DATA_PATH)
+def get_meeting(session: Session, meeting_id: str):
+    meeting = session.get(Meeting, meeting_id)
+    if meeting is None:
+        raise ApiError(404, "MEETING_NOT_FOUND", "모임을 찾을 수 없어요.")
+    return meeting
 
 
-def new_member(name: str) -> dict:
-    return {"name": name, "availability": {}, "preference": None}
+def authenticate(session: Session, meeting_id: str, token: str):
+    member = session.scalar(select(Member).where(
+        Member.meeting_id == meeting_id, Member.token_digest == token_digest(token)
+    ))
+    if member is None:
+        raise ApiError(401, "INVALID_TOKEN", "이 모임의 참여자 토큰이 필요해요.")
+    return get_meeting(session, meeting_id), member
 
 
-def create_meeting(title="우리 모임", candidate_dates=None, time_range=None,
-                   slot_minutes=60, members=()) -> dict:
-    """새 모임으로 교체(기존 모임은 사라짐)."""
-    global _meeting
-    _meeting = {
-        "title": title,
-        "candidate_dates": sorted(set(candidate_dates or default_dates())),
-        "time_range": time_range or {"start": "10:00", "end": "23:00"},
-        "slot_minutes": slot_minutes,
-        "status": "collecting",
-        "confirmed": None,
-        "members": [new_member(n) for n in dict.fromkeys(members)],
-        "recommendations": [],
-        "created_at": datetime.now().isoformat(timespec="seconds"),
+def require_host(member: Member):
+    if not member.is_host:
+        raise ApiError(403, "HOST_REQUIRED", "모임을 만든 사람만 확정하거나 추천을 요청할 수 있어요.")
+
+
+def invalidate(meeting: Meeting, *, schedule=False):
+    meeting.recommendation_result = None
+    meeting.confirmed_place = None
+    if schedule:
+        meeting.confirmed = None
+    meeting.status = "scheduled" if meeting.confirmed else "collecting"
+
+
+def commit(session: Session, meeting: Meeting):
+    # Every member edit versions the meeting: in-flight AI cannot overwrite newer inputs.
+    meeting.revision += 1
+    try:
+        session.commit()
+    except StaleDataError:
+        session.rollback()
+        raise ApiError(409, "MEETING_CHANGED", "모임 정보가 바뀌었어요. 새로고침 후 다시 시도해 주세요.")
+    except IntegrityError:
+        session.rollback()
+        raise ApiError(409, "MEMBER_CONFLICT", "이미 사용 중인 이름이에요. 다른 이름으로 참여해 주세요.")
+
+
+def snapshot(meeting: Meeting, *, host=False):
+    result = meeting.recommendation_result
+    created_at = meeting.created_at
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    body = {
+        "id": meeting.id, "title": meeting.title,
+        "candidate_dates": meeting.candidate_dates, "time_range": meeting.time_range,
+        "slot_minutes": meeting.slot_minutes, "status": meeting.status,
+        "confirmed": meeting.confirmed, "confirmed_place": meeting.confirmed_place,
+        "revision": meeting.revision, "created_at": created_at.isoformat(),
+        "members": [{"id": m.id, "name": m.name, "is_host": m.is_host,
+                     "availability": m.availability, "availability_submitted": m.availability_submitted,
+                     "preference": m.preference} for m in meeting.members],
+        "recommendation_result": result,
+        "recommendations": result["recommendations"] if result else [],
     }
-    save()
-    return _meeting
-
-
-def get_meeting() -> dict:
-    return _meeting if _meeting is not None else create_meeting()
-
-
-def get_member(meeting: dict, name: str) -> dict:
-    """이름으로 참여자를 찾고, 없으면 새로 추가한다."""
-    for m in meeting["members"]:
-        if m["name"] == name:
-            return m
-    if len(meeting["members"]) >= MAX_MEMBERS:
-        raise ApiError(400, "MEETING_FULL", "인원이 가득 찼어요.")
-    member = new_member(name)
-    meeting["members"].append(member)
-    return member
-
-
-_load()
+    if host:
+        body["invite_code"] = meeting.invite_code
+    return body

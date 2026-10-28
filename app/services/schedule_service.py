@@ -1,9 +1,10 @@
 """1-1, 1-2, 그룹 시간 조율. AI 없이 코드로만 계산한다 (크레딧 0원)."""
 import json
+import math
 from datetime import datetime, timedelta
 
 from app import prompts
-from app.clients import hcx_client as hcx
+from app.clients import ai_client as ai
 from app.config import settings
 from app.errors import ApiError
 
@@ -58,10 +59,12 @@ def _end_time(start: str, minutes: int) -> str:
 def best_slots(meeting: dict, min_hours: float = 2, top: int = 5) -> dict:
     """가장 많은 사람이 되는 연속 시간 구간을 순위대로."""
     members = meeting["members"]
-    responded = [m for m in members if m["availability"]]
+    responded = [m for m in members if m.get("availability_submitted", bool(m["availability"]))]
     slots = all_slots(meeting)
     step = meeting["slot_minutes"]
-    need = max(1, int(min_hours * 60 // step))
+    if not math.isfinite(min_hours) or not 0 < min_hours <= 24 or not 1 <= top <= 50:
+        raise ApiError(400, "VALIDATION_ERROR", "최소 시간은 0 초과 24 이하, 결과 수는 1~50이어야 해요.")
+    need = max(1, math.ceil(min_hours * 60 / step))
 
     def find(need_slots: int) -> list:
         best = {}  # (날짜, 가능한 사람들) -> 가장 긴 구간
@@ -107,6 +110,26 @@ def best_slots(meeting: dict, min_hours: float = 2, top: int = 5) -> dict:
     }
 
 
+def validate_confirmation(meeting: dict, req) -> dict:
+    if req.date not in meeting["candidate_dates"]:
+        raise ApiError(400, "INVALID_DATE", "열려 있는 날짜만 고를 수 있어요.")
+    slots = all_slots(meeting)
+    selected = [s for s in slots if req.start <= s < req.end]
+    if (req.start not in slots or not selected
+            or _end_time(selected[-1], meeting["slot_minutes"]) != req.end):
+        raise ApiError(400, "INVALID_SLOT", "모임 시간 범위와 슬롯 간격에 맞춰 선택해 주세요.")
+    available = [m for m in meeting["members"]
+                 if set(selected).issubset(m["availability"].get(req.date, []))]
+    missing = [m for m in meeting["members"] if m not in available]
+    if not available:
+        raise ApiError(409, "NO_ATTENDEES", "선택한 시간에 참석할 수 있는 사람이 없어요.")
+    if missing and not req.allow_partial:
+        raise ApiError(409, "MEMBERS_UNAVAILABLE", "전원이 가능한 시간이 아니에요. 일부 참석 확정은 allow_partial을 명시해 주세요.")
+    return {"date": req.date, "start": req.start, "end": req.end,
+            "attending_member_ids": [m["id"] for m in available],
+            "missing_member_ids": [m["id"] for m in missing]}
+
+
 async def parse_availability_text(meeting: dict, text: str) -> dict:
     """(Should) '토요일 저녁 다 돼' -> {'availability': {...}, 'note': '...'}"""
     slots = all_slots(meeting)
@@ -124,7 +147,7 @@ async def parse_availability_text(meeting: dict, text: str) -> dict:
     dates = [f"{d}({WEEKDAYS[datetime.strptime(d, '%Y-%m-%d').weekday()]})"
              for d in meeting["candidate_dates"]]
     user = json.dumps({"후보날짜": dates, "선택가능슬롯": slots, "문장": text}, ensure_ascii=False)
-    out = await hcx.structured(prompts.AVAILABILITY_SYSTEM, user,
+    out = await ai.structured(prompts.AVAILABILITY_SYSTEM, user,
                                prompts.AVAILABILITY_SCHEMA, step="parse_availability")
     avail = {d.get("date", "")[:10]: d.get("slots", []) for d in out.get("days", [])}
     return {"availability": clean_availability(meeting, avail, strict=False),

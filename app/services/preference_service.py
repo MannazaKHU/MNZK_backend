@@ -4,7 +4,7 @@ import re
 from collections import Counter
 
 from app import prompts
-from app.clients import hcx_client as hcx
+from app.clients import ai_client as ai
 from app.clients import naver_client as naver
 from app.config import settings
 from app.errors import ApiError
@@ -55,7 +55,7 @@ async def parse_preference(text: str) -> dict:
     if settings.MOCK_MODE:
         raw = _rule_parse(text)
     else:
-        raw = await hcx.structured(prompts.PREFERENCE_SYSTEM, text,
+        raw = await ai.structured(prompts.PREFERENCE_SYSTEM, text,
                                    prompts.PREFERENCE_SCHEMA, step="parse_preference")
     budget = raw.get("budget_max") or 0
     indoor = raw.get("indoor") if raw.get("indoor") in ("indoor", "outdoor", "any") else "any"
@@ -106,12 +106,12 @@ def merge_group(prefs: list) -> dict:
     }
 
 
-def _rule_summary(merged: dict) -> str:
+def rule_summary(merged: dict) -> str:
     parts = []
     if merged["mood"]:
         parts.append(", ".join(merged["mood"][:2]))
     if merged["budget_max"]:
-        parts.append(f"1인 {merged['budget_max'] // 10000}만원 이하")
+        parts.append(f"1인 {merged['budget_max']:,}원 이하")
     if merged["likes"]:
         parts.append(" · ".join(x["word"] for x in merged["likes"][:3]))
     text = " ".join(parts) or "모두가 편한 곳"
@@ -122,9 +122,9 @@ def _rule_summary(merged: dict) -> str:
 
 async def group_summary(merged: dict) -> str:
     if settings.MOCK_MODE:
-        return _rule_summary(merged)
+        return rule_summary(merged)
     try:
-        return await hcx.chat(prompts.SUMMARY_SYSTEM,
+        return await ai.chat(prompts.SUMMARY_SYSTEM,
                               json.dumps(merged, ensure_ascii=False), step="summary")
     except ApiError:
-        return _rule_summary(merged)
+        return rule_summary(merged)

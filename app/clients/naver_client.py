@@ -2,7 +2,7 @@
 - 지역 검색 (네이버 개발자센터 검색 API): 역·가게 이름 -> 좌표, 근처 가게 후보
 - 지오코딩 / 리버스 지오코딩 (NCP Maps): 주소 -> 좌표, 좌표 -> 동네 이름
 네이버 지역 검색은 '반경 검색'이 없어서 "사당역 파스타"처럼 역 이름을 붙여 검색하고,
-거리는 코드로 계산해 너무 먼 곳을 걸러낸다. MOCK_MODE 에서는 샘플 데이터로 흉내낸다."""
+거리는 코드로 계산해 너무 먼 곳을 걸러낸다. MAPS_PROVIDER=mock 에서는 샘플 데이터로 흉내낸다."""
 import hashlib
 import html
 import math
@@ -14,16 +14,13 @@ import httpx
 from app.config import settings
 from app.errors import ApiError
 
-SEARCH_URL = "https://naverapihub.apigw.ntruss.com/search/v1/local"
-
-
 def haversine_km(lat1, lng1, lat2, lng2) -> float:
     """두 좌표 사이 직선거리(km)."""
     r = 6371
     p1, p2 = math.radians(lat1), math.radians(lat2)
     dp, dl = p2 - p1, math.radians(lng2 - lng1)
     a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
-    return 2 * r * math.asin(math.sqrt(a))
+    return 2 * r * math.asin(math.sqrt(min(1.0, max(0.0, a))))
 
 
 # ---------- MOCK 데이터 ----------
@@ -106,11 +103,10 @@ async def local_search(query: str, display: int = 5, sort: str = "random") -> li
     params = {"query": query, "display": display, "start": 1, "sort": sort}
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            res = await client.get(SEARCH_URL, headers=headers, params=params)
-    except httpx.HTTPError as e:
-        raise ApiError(502, "MAP_ERROR", f"지도 정보를 불러오지 못했어요: {e}")
+            res = await client.get(settings.NAVER_SEARCH_URL, headers=headers, params=params)
+    except httpx.HTTPError:
+        raise ApiError(502, "MAP_ERROR", "지도 정보를 불러오지 못했어요.")
     if res.status_code != 200:
-        print(f"[NAVER SEARCH ERROR] {res.status_code} {res.text[:300]}")
         raise ApiError(502, "MAP_ERROR", "지도 정보를 불러오지 못했어요.")
     return [_to_place(it) for it in res.json().get("items", []) if it.get("mapx")]
 
@@ -122,10 +118,9 @@ async def _ncp_get(path: str, params: dict) -> dict:
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             res = await client.get(settings.NCP_MAPS_BASE + path, headers=headers, params=params)
-    except httpx.HTTPError as e:
-        raise ApiError(502, "MAP_ERROR", f"지도 정보를 불러오지 못했어요: {e}")
+    except httpx.HTTPError:
+        raise ApiError(502, "MAP_ERROR", "지도 정보를 불러오지 못했어요.")
     if res.status_code != 200:
-        print(f"[NCP MAPS ERROR] {path} {res.status_code} {res.text[:300]}")
         raise ApiError(502, "MAP_ERROR", "지도 정보를 불러오지 못했어요.")
     return res.json()
 
@@ -134,7 +129,7 @@ async def geocode(text: str):
     """'수원역' 또는 '경기 수원시 팔달구 덕영대로 924' -> {"text","lat","lng"}. 못 찾으면 None."""
     if not text:
         return None
-    if settings.MOCK_MODE:
+    if settings.MAPS_PROVIDER == "mock":
         return _mock_geocode(text)
     # 1) 역·건물 이름은 지역 검색이 잘 찾음
     places = await local_search(text, display=1)
@@ -150,7 +145,7 @@ async def geocode(text: str):
 
 async def area_name(lat: float, lng: float):
     """좌표 -> '동작구 사당동' (리버스 지오코딩). 못 찾으면 None."""
-    if settings.MOCK_MODE:
+    if settings.MAPS_PROVIDER == "mock":
         return "샘플구 샘플동"
     data = await _ncp_get("/map-reversegeocode/v2/gc",
                           {"coords": f"{lng},{lat}", "orders": "legalcode", "output": "json"})
@@ -164,8 +159,8 @@ async def area_name(lat: float, lng: float):
 
 async def driving(start: dict, goal: dict):
     """자동차 길찾기 (NCP Directions 5). {"distance_km","minutes"} / 실패하면 None.
-    MOCK_MODE 에서는 직선거리 x1.3 을 도로 거리로, 시속 25km 로 계산한 값."""
-    if settings.MOCK_MODE:
+    MAPS_PROVIDER=mock 에서는 직선거리 x1.3 을 도로 거리로, 시속 25km 로 계산한 값."""
+    if settings.MAPS_PROVIDER == "mock":
         km = haversine_km(start["lat"], start["lng"], goal["lat"], goal["lng"]) * 1.3
         return {"distance_km": round(km, 1), "minutes": max(1, round(km / 25 * 60))}
     try:
@@ -186,7 +181,7 @@ async def driving(start: dict, goal: dict):
 
 async def nearest_station(lat: float, lng: float):
     """중간 좌표 근처 지하철역. {"name","search_name","lat","lng"} / 못 찾으면 None."""
-    if settings.MOCK_MODE:
+    if settings.MAPS_PROVIDER == "mock":
         return {"name": "샘플역", "search_name": "샘플역", "lat": lat, "lng": lng}
     try:
         area = await area_name(lat, lng)
@@ -208,8 +203,8 @@ async def nearest_station(lat: float, lng: float):
 async def search_places(query: str, center: dict, radius_m: int) -> list:
     """'{역이름} {검색어}' 로 검색하고, 중간지점에서 radius_m 안의 가게만 돌려준다."""
     full_query = f"{center['search_name']} {query}"
-    if settings.MOCK_MODE:
-        return _mock_search(full_query, center)
+    if settings.MAPS_PROVIDER == "mock":
+        return [p for p in _mock_search(full_query, center) if p["distance_m"] <= radius_m]
     places = await local_search(full_query, display=5)
     for p in places:
         p["distance_m"] = round(haversine_km(center["lat"], center["lng"], p["lat"], p["lng"]) * 1000)
