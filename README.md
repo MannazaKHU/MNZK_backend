@@ -162,6 +162,8 @@ CLOVA 관련 변수와 JSON 저장용 `DATA_PATH`는 더 이상 사용하지 않
 
 ## DB와 마이그레이션
 
+테이블별 필드·관계·JSON 구조는 [데이터베이스 명세](docs/DATABASE.md)에 정리했습니다.
+
 - `meetings`: 모임 조건, 상태, 확정 시간·장소, 현재 추천, 버전
 - `members`: 모임별 참여자, 토큰 해시, 입력 여부, 가능 시간·선호(JSON)
 - `recommendation_runs`: 추천 요청, 생성 당시 버전, 추천 결과 이력
