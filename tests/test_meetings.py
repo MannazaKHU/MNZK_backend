@@ -1,239 +1,283 @@
+from datetime import datetime, timedelta, timezone
+
+import pytest
+from sqlalchemy import func, select
+
 from app import store
 from app.errors import ApiError
 from app.models import Meeting, RecommendationRun
-from sqlalchemy import select, func
-import pytest
+from app.services import submission_service
+
+DAY = "2026-11-01"
 
 
-def populate(client, group):
-    for headers, place in [(group["hh"], "강남역"), (group["gh"], "사당역")]:
-        res = client.put(group["url"] + "/members/me/availability", headers=headers,
-                         json={"availability": {"2026-10-28": ["10:00", "11:00", "12:00"]}})
-        assert res.status_code == 200, res.text
-        res = client.put(group["url"] + "/members/me/preference", headers=headers,
-                         json={"text": f"{place}에서 출발. 파스타 좋아. 2만원"})
-        assert res.status_code == 200, res.text
-
-
-def confirm(client, group, **overrides):
-    return client.post(group["url"] + "/schedule/confirm", headers=group["hh"],
-                       json={"date": "2026-10-28", "start": "10:00", "end": "13:00", **overrides})
-
-
-def recommend(client, group):
-    return client.post(group["url"] + "/recommend", headers=group["hh"], json={"count": 3})
-
-
-def test_complete_flow_persists_across_sessions(client, group, database):
-    populate(client, group)
-    best = client.get(group["url"] + "/schedule", headers=group["hh"]).json()["best"][0]
-    assert best["available_count"] == 2
-    assert recommend(client, group).json()["detail"]["code"] == "SCHEDULE_REQUIRED"
-    assert confirm(client, group).json()["status"] == "scheduled"
-    response = recommend(client, group)
-    assert response.status_code == 200, response.text
-    result = response.json()
-    assert result["schedule"]["start"] == "10:00"
-    assert result["recommendations"]
-    assert len(result["recommendations"][0]["travel"]) == 2
-    assert all(r["warnings"] for r in result["recommendations"])
-    selected = result["recommendations"][0]["place"]["id"]
-    response = client.post(group["url"] + "/place/confirm", headers=group["hh"],
-                           json={"place_id": selected, "revision": result["revision"]})
-    assert response.status_code == 200, response.text
-    assert response.json()["status"] == "finalized"
-    with database() as session:
-        meeting = session.get(Meeting, group["id"])
-        assert meeting.confirmed_place["id"] == selected
-        assert session.scalar(select(func.count()).select_from(RecommendationRun)) == 1
-        assert all(len(m.token_digest) == 64 for m in meeting.members)
-        assert group["host"]["access_token"] not in str(meeting.members[0].__dict__)
-
-
-def test_meeting_isolation_and_host_permissions(client, group):
-    other = client.post("/api/meetings", json={}).json()
-    assert client.get(group["url"]).status_code == 401
-    assert client.get(group["url"], headers={
-        "Authorization": f"Bearer {other['access_token']}"
-    }).status_code == 401
-    snapshot = client.get(group["url"], headers=group["gh"]).json()
-    assert "invite_code" not in snapshot
-    assert "token_digest" not in str(snapshot)
-    for endpoint, body in [
-        ("/schedule/confirm", {"date": "2026-10-28", "start": "10:00", "end": "12:00"}),
-        ("/recommend", {}),
-        ("/place/confirm", {"place_id": "x", "revision": 1}),
-    ]:
-        assert client.post(group["url"] + endpoint, headers=group["gh"], json=body).status_code == 403
-    assert client.post(group["url"] + "/members", json={"name": "침입", "invite_code": "bad"}).status_code == 403
-    assert client.post(group["url"] + "/members", json={
-        "name": "참여자", "invite_code": group["host"]["meeting"]["invite_code"]
-    }).status_code == 409
-    # Old name-based mutation is rejected, not silently used as an identity.
-    assert client.put(group["url"] + "/members/me/availability", headers=group["hh"],
-                      json={"name": "참여자", "availability": {}}).status_code == 400
-
-
-@pytest.mark.parametrize("body", [
-    {"start": "25:99"}, {"start": "9:00"}, {"end": "09:00"},
-    {"start": "10:30"}, {"end": "14:30"}, {"date": "2026-10-29"},
-])
-def test_invalid_confirmation(client, group, body):
-    populate(client, group)
-    assert confirm(client, group, **body).status_code == 400
-    assert client.get(group["url"], headers=group["hh"]).json()["confirmed"] is None
-
-
-def test_partial_attendance_is_explicit_and_excludes_absent_members(client, group):
-    client.put(group["url"] + "/members/me/availability", headers=group["hh"],
-               json={"availability": {"2026-10-28": ["10:00", "11:00", "12:00"]}})
-    assert confirm(client, group).status_code == 409
-    response = confirm(client, group, allow_partial=True)
-    assert response.status_code == 200
-    assert response.json()["confirmed"]["attending_member_ids"] == [group["host"]["member_id"]]
-    client.put(group["url"] + "/members/me/preference", headers=group["hh"],
-               json={"text": "강남역에서 출발. 파스타"})
-    response = recommend(client, group)
-    assert response.status_code == 200, response.text
-    assert len(response.json()["recommendations"][0]["travel"]) == 1
-
-
-def test_input_edits_invalidate_derived_results(client, group):
-    populate(client, group)
-    confirm(client, group)
-    result = recommend(client, group).json()
-    client.put(group["url"] + "/members/me/preference", headers=group["gh"],
-               json={"text": "사당역에서 출발. 피자"})
-    snapshot = client.get(group["url"], headers=group["hh"]).json()
-    assert snapshot["status"] == "scheduled"
-    assert snapshot["confirmed"] is not None
-    assert snapshot["recommendations"] == []
-    assert client.post(group["url"] + "/place/confirm", headers=group["hh"], json={
-        "place_id": result["recommendations"][0]["place"]["id"], "revision": result["revision"]
-    }).status_code == 409
-    client.put(group["url"] + "/members/me/availability", headers=group["gh"],
-               json={"availability": {}})
-    snapshot = client.get(group["url"], headers=group["hh"]).json()
-    assert snapshot["status"] == "collecting"
-    assert snapshot["confirmed"] is None
-    assert snapshot["confirmed_place"] is None
-    schedule = client.get(group["url"] + "/schedule", headers=group["hh"]).json()
-    assert schedule["responded_members"] == 2
-
-
-def test_new_member_invalidates_time_confirmation(client, group):
-    populate(client, group)
-    confirm(client, group)
-    joined = client.post(group["url"] + "/members", json={
-        "name": "새참여자", "invite_code": group["host"]["meeting"]["invite_code"]
+def create_group(client, size, joined=None):
+    response = client.post("/api/meetings", json={
+        "expected_member_count": size, "host_name": "방장",
+        "candidate_dates": [DAY], "time_range": {"start": "10:00", "end": "14:00"},
     })
-    assert joined.status_code == 201
-    assert joined.json()["meeting"]["confirmed"] is None
+    assert response.status_code == 201, response.text
+    host = response.json()
+    url = "/api/meetings/" + host["meeting"]["id"]
+    people = [host]
+    for i in range(1, size if joined is None else joined):
+        res = client.post(url + "/members", json={"name": f"참여자{i}", "invite_code": host["meeting"]["invite_code"]})
+        assert res.status_code == 201, res.text
+        people.append(res.json())
+    return url, people
 
 
-def test_all_attendees_need_preferences_and_locations(client, group):
-    for headers in [group["hh"], group["gh"]]:
-        client.put(group["url"] + "/members/me/availability", headers=headers,
-                   json={"availability": {"2026-10-28": ["10:00", "11:00", "12:00"]}})
-    confirm(client, group)
-    assert recommend(client, group).json()["detail"]["code"] == "PREFERENCES_INCOMPLETE"
-    for headers in [group["hh"], group["gh"]]:
-        client.put(group["url"] + "/members/me/preference", headers=headers, json={"text": "파스타"})
-    assert recommend(client, group).json()["detail"]["code"] == "LOCATIONS_INCOMPLETE"
+def headers(person):
+    return {"Authorization": "Bearer " + person["access_token"]}
 
 
-def test_schedule_minimum_duration_and_query_validation(client, group):
-    for headers in [group["hh"], group["gh"]]:
-        client.put(group["url"] + "/members/me/availability", headers=headers,
-                   json={"availability": {"2026-10-28": ["10:00", "11:00"]}})
-    res = client.get(group["url"] + "/schedule?min_hours=2.5", headers=group["hh"])
-    assert res.status_code == 200
-    assert res.json()["relaxed"] is True
-    for query in ["min_hours=nan", "min_hours=inf", "min_hours=0", "top=-1", "top=51"]:
-        assert client.get(group["url"] + "/schedule?" + query, headers=group["hh"]).status_code == 400
+def body(**updates):
+    return {"availability": {DAY: ["10:00", "11:00", "12:00"]},
+            "start_location_text": "강남역", "desired_text": "조용한 파스타집, 2만원",
+            "avoided_text": "회", **updates}
 
 
-def test_old_endpoints_cannot_bypass_schedule(client):
-    assert client.post("/api/recommend/quick", json={}).status_code == 404
-    assert client.post("/api/meeting/demo").status_code == 404
+def submit(client, url, person, payload=None):
+    return client.put(url + "/members/me/submission", headers=headers(person), json=payload or body())
 
 
-def test_database_rejects_stale_writes(group, database):
-    with database() as first, database() as second:
-        a = first.get(Meeting, group["id"])
-        b = second.get(Meeting, group["id"])
-        a.title = "new"
-        store.commit(first, a)
-        b.title = "stale"
-        with pytest.raises(ApiError) as error:
-            store.commit(second, b)
-        assert error.value.status_code == 409
-    with database() as session:
-        assert session.get(Meeting, group["id"]).title == "new"
+@pytest.mark.parametrize("size", [1, 2, 4, 7, 10])
+def test_dynamic_group_waits_for_every_distinct_member(client, database, size):
+    url, people = create_group(client, size)
+    for index, person in enumerate(people):
+        res = submit(client, url, person)
+        assert res.status_code == 200, res.text
+        data = res.json()
+        progress = data["progress"]
+        assert progress["expected_member_count"] == size
+        assert progress["submitted_member_count"] == index + 1
+        assert progress["remaining_member_count"] == size - index - 1
+        if index + 1 < size:
+            assert data["status"] == "waiting"
+            assert data["recommendations"] == []
+            assert data["confirmed"] is None
+        else:
+            assert data["status"] == "recommended"
+            assert progress["all_submitted"] is True
+            assert len(data["confirmed"]["attending_member_ids"]) == size
+            assert data["confirmed"]["missing_member_ids"] == []
+            assert data["recommendations"]
+            assert len(data["recommendations"][0]["travel"]) == size
+    with database() as db:
+        assert db.scalar(select(func.count()).select_from(RecommendationRun)) == 1
+    # Every participant reads the same saved result.
+    for person in people:
+        saved = client.get(url, headers=headers(person)).json()
+        assert saved["recommendations"] == data["recommendations"]
 
 
-def test_in_flight_recommendation_is_not_saved_after_edit(client, group, database, monkeypatch):
-    from app.routers import meetings
-    populate(client, group)
-    confirm(client, group)
+def test_count_is_explicit_and_validated(client):
+    assert client.post("/api/meetings", json={}).status_code == 400
+    for count in [0, -1, 11]:
+        assert client.post("/api/meetings", json={"expected_member_count": count}).status_code == 400
 
+
+def test_unjoined_members_are_still_counted_as_waiting(client):
+    url, people = create_group(client, 5, joined=1)
+    result = submit(client, url, people[0]).json()
+    assert result["progress"]["joined_member_count"] == 1
+    assert result["progress"]["submitted_member_count"] == 1
+    assert result["progress"]["remaining_member_count"] == 4
+    assert result["status"] == "waiting"
+    assert client.post(url + "/recommend", headers=headers(people[0])).status_code == 409
+
+
+def test_capacity_uses_configured_size_and_duplicate_names_rejected(client):
+    url, people = create_group(client, 2, joined=1)
+    invite = people[0]["meeting"]["invite_code"]
+    assert client.post(url + "/members", json={"name": "방장", "invite_code": invite}).status_code == 409
+    assert client.post(url + "/members", json={"name": "다음", "invite_code": invite}).status_code == 201
+    assert client.post(url + "/members", json={"name": "초과", "invite_code": invite}).json()["detail"]["code"] == "MEETING_FULL"
+
+
+def test_duplicate_submission_and_retry_do_not_recount_or_rebill(client, database):
+    url, people = create_group(client, 2)
+    first = submit(client, url, people[0]).json()
+    again = submit(client, url, people[0]).json()
+    assert again["revision"] == first["revision"]
+    assert again["progress"]["submitted_member_count"] == 1
+    done = submit(client, url, people[1]).json()
+    assert submit(client, url, people[1]).json()["revision"] == done["revision"]
+    assert client.post(url + "/recommend", headers=headers(people[0])).json()["revision"] == done["revision"]
+    with database() as db:
+        assert db.scalar(select(func.count()).select_from(RecommendationRun)) == 1
+
+
+def test_processing_status_is_visible_before_external_call_finishes(client, database, monkeypatch):
+    url, people = create_group(client, 2)
+    submit(client, url, people[0])
+    original = submission_service.recommend_service.recommend
+
+    async def observe(*args, **kwargs):
+        with database() as db:
+            saved = db.get(Meeting, people[0]["meeting"]["id"])
+            assert saved.status == "processing"
+            assert saved.recommendation_result is None
+            assert store.progress(saved)["all_submitted"] is True
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(submission_service.recommend_service, "recommend", observe)
+    assert submit(client, url, people[1]).json()["status"] == "recommended"
+
+
+def test_no_common_time_never_calls_place_recommendation(client, monkeypatch):
+    url, people = create_group(client, 2)
+    submit(client, url, people[0], body(availability={DAY: ["10:00"]}))
+    calls = []
+
+    async def unexpected(*args, **kwargs):
+        calls.append(True)
+        raise AssertionError("no common time must not call maps or AI")
+
+    monkeypatch.setattr(submission_service.recommend_service, "recommend", unexpected)
+    result = submit(client, url, people[1], body(availability={DAY: ["12:00"]})).json()
+    assert result["status"] == "schedule_conflict"
+    assert result["processing_error"]["code"] == "NO_COMMON_SCHEDULE"
+    assert result["progress"]["all_submitted"] is True
+    assert result["recommendations"] == []
+    assert calls == []
+
+
+def test_empty_availability_is_a_submission_but_has_no_common_time(client):
+    url, people = create_group(client, 1)
+    result = submit(client, url, people[0], body(availability={})).json()
+    assert result["progress"]["submitted_member_count"] == 1
+    assert result["status"] == "schedule_conflict"
+
+
+def test_invalid_form_or_unresolved_origin_is_not_partially_saved(client, database, monkeypatch):
+    url, people = create_group(client, 1)
+    for payload in [body(availability={DAY: ["25:00"]}), body(start_location_text=""),
+                    body(start_location={"text": "x", "lat": 999, "lng": 127})]:
+        assert submit(client, url, people[0], payload).status_code == 400
+    async def missing(text):
+        return None
+    monkeypatch.setattr(submission_service.preference_service.naver, "geocode", missing)
+    assert submit(client, url, people[0]).json()["detail"]["code"] == "LOCATION_NOT_FOUND"
+    with database() as db:
+        member = db.get(Meeting, people[0]["meeting"]["id"]).members[0]
+        assert member.submitted_at is None
+        assert member.preference is None
+        assert member.availability == {}
+
+
+def test_edit_reprocesses_without_double_counting_and_preserves_source_conditions(client, database):
+    url, people = create_group(client, 2)
+    submit(client, url, people[0])
+    previous = submit(client, url, people[1]).json()
+    result = submit(client, url, people[0], body(desired_text="피자", avoided_text="시끄러운 곳")).json()
+    assert result["status"] == "recommended"
+    assert result["progress"]["submitted_member_count"] == 2
+    pref = next(m["preference"] for m in result["members"] if m["is_host"])
+    assert pref["desired_text"] == "피자"
+    assert pref["avoided_text"] == "시끄러운 곳"
+    assert result["revision"] > previous["revision"]
+    with database() as db:
+        assert db.scalar(select(func.count()).select_from(RecommendationRun)) == 2
+
+
+def test_external_failure_keeps_forms_and_allows_any_participant_to_retry(client, monkeypatch):
+    url, people = create_group(client, 2)
+    submit(client, url, people[0])
+    original = submission_service.recommend_service.recommend
+    async def unavailable(*args, **kwargs):
+        raise ApiError(502, "MAP_ERROR", "지도 호출 실패")
+    monkeypatch.setattr(submission_service.recommend_service, "recommend", unavailable)
+    failed = submit(client, url, people[1]).json()
+    assert failed["status"] == "failed"
+    assert failed["processing_error"]["code"] == "MAP_ERROR"
+    assert failed["progress"]["submitted_member_count"] == 2
+    monkeypatch.setattr(submission_service.recommend_service, "recommend", original)
+    retry = client.post(url + "/recommend", headers=headers(people[1]))
+    assert retry.status_code == 200
+    assert retry.json()["status"] == "recommended"
+
+
+def test_stale_processing_cannot_overwrite_new_input(client, database, monkeypatch):
+    url, people = create_group(client, 1)
+    original = submission_service.recommend_service.recommend
     async def delayed(*args, **kwargs):
-        with database() as session:
-            meeting = session.get(Meeting, group["id"])
-            store.invalidate(meeting, schedule=True)
-            store.commit(session, meeting)
-        return {"recommendations": []}
-
-    monkeypatch.setattr(meetings.recommend_service, "recommend", delayed)
-    response = recommend(client, group)
-    assert response.status_code == 409, response.text
-    with database() as session:
-        assert session.get(Meeting, group["id"]).confirmed is None
-        assert session.scalar(select(func.count()).select_from(RecommendationRun)) == 0
-
-
-def test_invite_code_rejects_non_ascii_without_server_error(client, group):
-    response = client.post(group["url"] + "/members", json={"name": "새참여자", "invite_code": "잘못된코드"})
-    assert response.status_code == 400
-
-
-def test_invalid_place_is_not_finalized(client, group):
-    populate(client, group)
-    confirm(client, group)
-    result = recommend(client, group).json()
-    response = client.post(group["url"] + "/place/confirm", headers=group["hh"], json={
-        "place_id": "invented-place", "revision": result["revision"],
-    })
-    assert response.status_code == 400
-    assert client.get(group["url"], headers=group["hh"]).json()["confirmed_place"] is None
-
-
-def test_ai_ranking_failure_uses_real_candidates(client, group, monkeypatch):
-    from app.services import recommend_service
-    populate(client, group)
-    confirm(client, group)
-
-    async def unavailable(*args, **kwargs):
-        raise ApiError(502, "AI_ERROR", "unavailable")
-
-    monkeypatch.setattr(recommend_service, "rank", unavailable)
-    response = recommend(client, group)
+        with database() as db:
+            meeting = db.get(Meeting, people[0]["meeting"]["id"])
+            meeting.members[0].submitted_at = None
+            store.invalidate(meeting)
+            store.commit(db, meeting)
+        return await original(*args, **kwargs)
+    monkeypatch.setattr(submission_service.recommend_service, "recommend", delayed)
+    response = submit(client, url, people[0])
     assert response.status_code == 200, response.text
-    assert response.json()["fallback"] is True
-    assert response.json()["recommendations"]
+    assert response.json()["status"] == "waiting"
+    assert response.json()["recommendations"] == []
+    with database() as db:
+        assert db.scalar(select(func.count()).select_from(RecommendationRun)) == 0
 
 
-def test_map_failure_does_not_save_fabricated_recommendations(client, group, monkeypatch):
-    from app.services import recommend_service
-    populate(client, group)
-    confirm(client, group)
+def test_retry_does_not_duplicate_active_processing_and_can_reclaim_timeout(client, database):
+    url, people = create_group(client, 1)
+    submit(client, url, people[0])
+    with database() as db:
+        meeting = db.get(Meeting, people[0]["meeting"]["id"])
+        store.invalidate(meeting)
+        meeting.status = "processing"
+        meeting.processing_started_at = datetime.now(timezone.utc)
+        store.commit(db, meeting)
+    assert client.post(url + "/recommend", headers=headers(people[0])).json()["status"] == "processing"
+    with database() as db:
+        meeting = db.get(Meeting, people[0]["meeting"]["id"])
+        meeting.processing_started_at = datetime.now(timezone.utc) - timedelta(minutes=11)
+        store.commit(db, meeting)
+    assert client.post(url + "/recommend", headers=headers(people[0])).json()["status"] == "recommended"
 
-    async def unavailable(*args, **kwargs):
-        raise ApiError(502, "MAP_ERROR", "unavailable")
 
-    monkeypatch.setattr(recommend_service.naver, "search_places", unavailable)
-    response = recommend(client, group)
-    assert response.status_code == 502
-    meeting = client.get(group["url"], headers=group["hh"]).json()
-    assert meeting["status"] == "scheduled"
-    assert meeting["recommendations"] == []
+def test_isolation_and_final_place_permissions(client):
+    url, people = create_group(client, 2)
+    _, other = create_group(client, 1)
+    assert client.get(url).status_code == 401
+    assert submit(client, url, other[0]).status_code == 401
+    for person in people:
+        final = submit(client, url, person).json()
+    pick = {"place_id": final["recommendations"][0]["place"]["id"], "revision": final["revision"]}
+    assert client.post(url + "/place/confirm", headers=headers(people[1]), json=pick).status_code == 403
+    assert client.post(url + "/place/confirm", headers=headers(people[0]), json={**pick, "place_id": "fake"}).status_code == 400
+    res = client.post(url + "/place/confirm", headers=headers(people[0]), json=pick)
+    assert res.status_code == 200
+    assert res.json()["status"] == "finalized"
+    guest_view = client.get(url, headers=headers(people[1])).json()
+    assert "invite_code" not in guest_view
+    assert "token_digest" not in str(guest_view)
+
+
+def test_retired_manual_or_partial_routes_cannot_bypass_gate(client):
+    url, people = create_group(client, 3, joined=1)
+    hh = headers(people[0])
+    assert client.post(url + "/schedule/confirm", headers=hh, json={}).status_code == 404
+    assert client.put(url + "/members/me/availability", headers=hh, json={}).status_code == 404
+    assert client.put(url + "/members/me/preference", headers=hh, json={}).status_code == 404
+    assert client.post("/api/recommend/quick", json={}).status_code == 404
+    assert client.post(url + "/recommend", headers=hh).json()["detail"]["code"] == "SUBMISSIONS_INCOMPLETE"
+
+
+def test_concurrent_final_submissions_create_one_recommendation(client, database):
+    import asyncio
+    import httpx
+    from app.main import app
+    url, people = create_group(client, 3)
+    submit(client, url, people[0])
+
+    async def finish_together():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as concurrent:
+            return await asyncio.gather(*(
+                concurrent.put(url + "/members/me/submission", headers=headers(person), json=body())
+                for person in people[1:]
+            ))
+
+    results = asyncio.run(finish_together())
+    assert all(r.status_code == 200 for r in results), [r.text for r in results]
+    assert client.get(url, headers=headers(people[0])).json()["status"] == "recommended"
+    with database() as db:
+        assert db.scalar(select(func.count()).select_from(RecommendationRun)) == 1

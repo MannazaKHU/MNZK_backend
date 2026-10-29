@@ -5,6 +5,7 @@ Docker 없이 직접 실행할 때는 SQLite도 사용할 수 있습니다.
 
 - 모델: [app/models.py](../app/models.py)
 - 초기 마이그레이션: [0001_meetings.py](../migrations/versions/0001_meetings.py)
+- 전원 응답 자동 추천: [0002_group_submissions.py](../migrations/versions/0002_group_submissions.py)
 - 입력 검증: [app/schemas.py](../app/schemas.py)
 - API 사용법: [API.md](API.md)
 
@@ -29,43 +30,54 @@ alembic_version (DB 스키마 버전 관리)
 
 ## 2. meetings — 모임
 
-모임의 설정, 진행 상태, 확정 일정, 현재 추천 결과, 최종 장소를 저장합니다.
+모임의 목표 인원·설정·처리 상태·공통 일정·현재 추천 결과·최종 장소를 저장합니다.
 
 | 필드 | 타입 | NULL 허용 | 기본값·생성 규칙 | 설명·제약 |
 |---|---|:---:|---|---|
 | `id` | VARCHAR(36) | 아니요 | UUID v4 | PK, 모임 식별자 |
 | `title` | VARCHAR(40) | 아니요 | API 기본값 `우리 모임` | 모임 이름 |
+| `expected_member_count` | INTEGER | 아니요 | API 필수, DB fallback `1` | 방장 포함 목표 인원, API에서 1~10 허용 |
+| `recommendation_options` | JSON | 아니요 | DB·API 기본값: count 5, radius_m 1000, extra_text 빈 문자열 | 전원 제출 후 사용할 추천 옵션 |
 | `invite_code` | VARCHAR(64) | 아니요 | 무작위 URL-safe 문자열 | UNIQUE, 참여용 초대 코드 |
 | `candidate_dates` | JSON | 아니요 | API 기본값: 한국 날짜 기준 오늘부터 7일 | 후보 날짜 배열 |
 | `time_range` | JSON | 아니요 | API 기본값: 10:00~23:00 | 선택할 수 있는 시간 범위 |
 | `slot_minutes` | INTEGER | 아니요 | API 기본값 `60` | 슬롯 간격. API에서 30 또는 60만 허용 |
-| `status` | VARCHAR(20) | 아니요 | `collecting` | 진행 상태 |
-| `confirmed` | JSON | 예 | 미확정 | 확정 날짜·시간과 참석자 ID 배열 |
+| `status` | VARCHAR(20) | 아니요 | `waiting` | 진행 상태 |
+| `processing_started_at` | TIMESTAMPTZ | 예 | 없음 | 자동 추천 처리 시작, 10분 초과 시 재요청으로 재처리 가능 |
+| `processing_error` | JSON | 예 | 없음 | 실패 code·message |
+| `confirmed` | JSON | 예 | 미확정 | 서버가 자동 선택한 공통 날짜·시간과 전원 참석자 ID 배열 |
 | `recommendation_result` | JSON | 예 | 추천 없음 | 현재 유효한 추천 결과 전체 |
 | `confirmed_place` | JSON | 예 | 미확정 | 최종 선택한 장소 객체 |
 | `revision` | INTEGER | 아니요 | `1` | 모임 변경 버전, 동시 수정 충돌 검사 |
 | `created_at` | TIMESTAMPTZ | 아니요 | 현재 UTC 시각 | 생성 시각 |
 
-### 상태와 결과 갱신
+### 상태와 전원 응답 집계
 
 ```text
-collecting → scheduled → recommended → finalized
-입력 수집      시간 확정      장소 추천       장소 최종 확정
+waiting → processing → recommended → finalized
+   대기       자동 계산      추천 결과       최종 장소
+                  ├── schedule_conflict (공통 시간 없음)
+                  └── failed (처리 실패)
 ```
 
-상태 값은 현재 코드에서 관리하며 DB ENUM이나 CHECK 제약으로 제한하지 않습니다.
+상태 값은 코드에서 관리하며 DB ENUM이나 CHECK 제약은 아닙니다.
+가입 인원과 응답 완료 인원은 별개입니다. members.submitted_at이 있는 서로 다른 참여자 수가
+expected_member_count와 같을 때만 자동 계산을 시작합니다. 같은 사람의 재전송은 인원을 늘리지 않습니다.
 
-| 발생한 변경 | 시간 확정 | 추천·장소 확정 | 변경 후 상태 |
-|---|---|---|---|
-| 새 참여자 추가 | 해제 | 해제 | `collecting` |
-| 참여자의 가능 시간 변경 | 해제 | 해제 | `collecting` |
-| 선호·출발지 변경 | 유지 | 해제 | 시간 확정이 있으면 `scheduled`, 없으면 `collecting` |
-| 시간 확정 | 새 값 저장 | 해제 | `scheduled` |
-| 추천 생성 성공 | 유지 | 현재 추천 교체, 최종 장소 해제 | `recommended` |
-| 장소 최종 확정 | 유지 | 선택 장소 저장 | `finalized` |
+GET 모임 응답의 progress는 저장 열이 아니라 다음 값을 계산한 객체입니다.
 
-변경 시 `revision`을 증가시킵니다. 외부 API 응답을 기다리는 동안 모임 정보가 바뀌었다면
-오래된 결과는 저장하지 않고 `409 MEETING_CHANGED`를 반환합니다.
+| 필드 | 의미 |
+|---|---|
+| expected_member_count | 생성 시 정한 총 인원, 방장 포함 |
+| joined_member_count | 실제 가입한 인원 |
+| submitted_member_count | 전체 응답 제출 완료 인원 |
+| remaining_member_count | 아직 응답을 기다리는 인원, 미가입 인원 포함 |
+| all_submitted | 설정 인원 전원 제출 여부 |
+
+응답 수정 시 기존 공통 시간·추천·최종 장소를 해제하고, 전원 제출 상태이면 다시 자동 처리합니다.
+공통 시간은 전원이 가능한 가장 긴 연속 구간으로 자동 선택합니다.
+모임 변경마다 revision을 증가시키며 계산 중 입력이 바뀌면 이전 결과는 저장하지 않습니다.
+외부 API 실패 시 제출한 응답은 보존하고 processing_error를 저장해 재시도할 수 있습니다.
 
 ### candidate_dates / time_range / confirmed
 
@@ -81,15 +93,14 @@ collecting → scheduled → recommended → finalized
     "start": "18:00",
     "end": "21:00",
     "attending_member_ids": ["참석자 UUID"],
-    "missing_member_ids": ["불참자 UUID"]
+    "missing_member_ids": []
   }
 }
 ```
 
 `attending_member_ids`, `missing_member_ids`는 `members.id`를 담지만,
 JSON 내부이므로 DB 외래 키 제약은 없고 코드에서 구성합니다.
-시간 확정은 기본적으로 전원 참석을 요구합니다. 방장이 API 요청에
-`allow_partial: true`를 명시한 경우 일부 참석을 확정할 수 있습니다.
+현재 자동 처리에서는 전원 공통 시간만 사용합니다. 일부 참석 확정은 지원하지 않으며 missing_member_ids는 빈 배열입니다.
 
 ## 3. members — 모임별 참여자
 
@@ -105,7 +116,8 @@ JSON 내부이므로 DB 외래 키 제약은 없고 코드에서 구성합니다
 | `token_digest` | VARCHAR(64) | 아니요 | 접근 토큰의 SHA-256 해시 | UNIQUE, 원본 토큰은 저장하지 않음 |
 | `availability` | JSON | 아니요 | `{}` | 날짜별 가능한 슬롯 시작 시각 배열 |
 | `availability_submitted` | BOOLEAN | 아니요 | `false` | 일정 제출 여부 |
-| `preference` | JSON | 예 | 미입력 | 선호·예산·분위기·출발지 |
+| `preference` | JSON | 예 | 미입력 | 선호·예산·분위기·출발지와 원문 |
+| `submitted_at` | TIMESTAMPTZ | 예 | 미제출 | 전체 응답 제출 완료 시각. 인원 집계 기준 |
 | `created_at` | TIMESTAMPTZ | 아니요 | 현재 UTC 시각 | 참여자 생성 시각 |
 
 ### 제약과 인증
@@ -115,7 +127,7 @@ JSON 내부이므로 DB 외래 키 제약은 없고 코드에서 구성합니다
 - 원본 접근 토큰은 생성·참여 API 응답에서만 반환합니다.
 - 이후 요청은 `Authorization: Bearer <access_token>`으로 본인을 식별합니다.
 - 이름으로 다른 참여자의 입력을 수정할 수 없습니다.
-- 방장만 시간 확정·추천 요청·장소 최종 확정을 수행합니다.
+- 전원 제출 시 자동 추천하며 방장만 최종 장소를 확정합니다. 추천 재시도는 모든 참여자가 가능합니다.
 - API에서 모임별 최대 인원을 방장 포함 10명으로 제한합니다.
 
 ### availability
@@ -140,7 +152,11 @@ JSON 내부이므로 DB 외래 키 제약은 없고 코드에서 구성합니다
 
 | JSON 필드 | 값 형태 | 설명 |
 |---|---|---|
-| `raw_text` | 문자열 | 사용자가 입력한 원문 |
+| `raw_text` | 문자열 | 선호·비선호 원문을 분석용으로 구성한 문장 |
+| `start_location_text` | 문자열 | 사용자가 별도로 입력한 출발지 |
+| `desired_text` | 문자열 | 원하는 조건 원문 |
+| `avoided_text` | 문자열 | 피할 조건 원문 |
+| `submission_input` | 객체 | 날짜별 availability를 제외한 원래 제출 필드. 동일 요청 판정에 사용 |
 | `likes` | 문자열 배열 | 좋아하는 음식·활동·장소 종류 |
 | `dislikes` | 문자열 배열 | 피하고 싶은 조건 |
 | `mood` | 문자열 배열 | 원하는 분위기 |
@@ -165,7 +181,7 @@ JSON 내부이므로 DB 외래 키 제약은 없고 코드에서 구성합니다
 ```
 
 출발지 좌표는 위도 -90~90, 경도 -180~180 범위를 입력 검증합니다.
-선호는 시간 확정 전에도 입력할 수 있으며, 추천 전에는 참석자 전원의 선호·출발지가 필요합니다.
+일정·출발지·선호·비선호를 하나의 제출 요청으로 함께 저장합니다. 입력 검증·출발지 조회가 실패하면 부분 저장하거나 제출 완료로 집계하지 않습니다.
 
 ## 4. recommendation_runs — 추천 실행 이력
 
@@ -175,7 +191,7 @@ JSON 내부이므로 DB 외래 키 제약은 없고 코드에서 구성합니다
 |---|---|:---:|---|---|
 | `id` | VARCHAR(36) | 아니요 | UUID v4 | PK, 추천 실행 식별자 |
 | `meeting_id` | VARCHAR(36) | 아니요 | 대상 모임 ID | FK → `meetings.id`, 인덱스 있음 |
-| `input_revision` | INTEGER | 아니요 | 추천 시작 당시 모임 버전 | 어떤 버전의 입력으로 생성했는지 기록 |
+| `input_revision` | INTEGER | 아니요 | 전원 제출 후 처리 시작 당시 모임 버전 | 어떤 버전의 입력으로 생성했는지 기록 |
 | `request` | JSON | 아니요 | 추천 요청 본문 | 개수·반경·추가 조건 |
 | `result` | JSON | 아니요 | 추천 결과 전체 | 중심지·순위·이동 정보 등 |
 | `created_at` | TIMESTAMPTZ | 아니요 | 현재 UTC 시각 | 추천 실행 기록 생성 시각 |
@@ -273,3 +289,9 @@ python -m alembic check
 - JSON 내부 참조에는 DB 외래 키 제약이 없으며 애플리케이션에서 검증합니다.
 - 입력 검증 규칙과 상태 전이는 모두 DB 제약으로 구현된 것은 아닙니다.
 - 이전 `data/meetings.json` 파일은 현재 DB와 별개이며 자동으로 이관하지 않습니다.
+
+## 7. 기존 데이터 이관
+
+0002 마이그레이션은 기존 모임·추천 이력을 삭제하지 않습니다.
+기존 모임의 목표 인원은 실제 가입한 인원으로 설정하고, 일정 제출 여부와 출발지를 포함한 선호가 있는 참여자는 제출 완료로 이관합니다.
+새 모임은 반드시 API 생성 요청에 목표 인원을 명시해야 합니다.

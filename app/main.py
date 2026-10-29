@@ -15,7 +15,7 @@ async def lifespan(app):
 
 
 development = settings.APP_ENV == "development"
-app = FastAPI(title="MeetFlow", version="2.0.0", lifespan=lifespan,
+app = FastAPI(title="MeetFlow", version="3.0.0", lifespan=lifespan,
               docs_url="/docs" if development else None,
               redoc_url="/redoc" if development else None,
               openapi_url="/openapi.json" if development else None)

@@ -33,24 +33,3 @@ def client(database, monkeypatch):
     with TestClient(app, raise_server_exceptions=False) as test_client:
         yield test_client
     app.dependency_overrides.clear()
-
-
-@pytest.fixture
-def group(client):
-    created = client.post("/api/meetings", json={
-        "host_name": "방장", "candidate_dates": ["2026-10-28"],
-        "time_range": {"start": "10:00", "end": "14:00"},
-    })
-    assert created.status_code == 201, created.text
-    host = created.json()
-    mid = host["meeting"]["id"]
-    joined = client.post(f"/api/meetings/{mid}/members", json={
-        "name": "참여자", "invite_code": host["meeting"]["invite_code"],
-    })
-    assert joined.status_code == 201, joined.text
-    return {
-        "id": mid, "host": host, "guest": joined.json(),
-        "url": f"/api/meetings/{mid}",
-        "hh": {"Authorization": f"Bearer {host['access_token']}"},
-        "gh": {"Authorization": f"Bearer {joined.json()['access_token']}"},
-    }

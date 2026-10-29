@@ -22,8 +22,11 @@ def new_member(name: str, *, is_host=False):
                   availability={}, availability_submitted=False), token
 
 
-def get_meeting(session: Session, meeting_id: str):
-    meeting = session.get(Meeting, meeting_id)
+def get_meeting(session: Session, meeting_id: str, *, lock=False):
+    query = select(Meeting).where(Meeting.id == meeting_id)
+    if lock:
+        query = query.with_for_update()
+    meeting = session.scalar(query)
     if meeting is None:
         raise ApiError(404, "MEETING_NOT_FOUND", "모임을 찾을 수 없어요.")
     return meeting
@@ -46,9 +49,18 @@ def require_host(member: Member):
 def invalidate(meeting: Meeting, *, schedule=False):
     meeting.recommendation_result = None
     meeting.confirmed_place = None
-    if schedule:
-        meeting.confirmed = None
-    meeting.status = "scheduled" if meeting.confirmed else "collecting"
+    meeting.confirmed = None
+    meeting.processing_started_at = None
+    meeting.processing_error = None
+    meeting.status = "waiting"
+
+
+def progress(meeting: Meeting):
+    submitted = sum(m.submitted_at is not None for m in meeting.members)
+    expected = meeting.expected_member_count
+    return {"expected_member_count": expected, "joined_member_count": len(meeting.members),
+            "submitted_member_count": submitted, "remaining_member_count": max(0, expected - submitted),
+            "all_submitted": len(meeting.members) == expected and submitted == expected}
 
 
 def commit(session: Session, meeting: Meeting):
@@ -71,11 +83,15 @@ def snapshot(meeting: Meeting, *, host=False):
         created_at = created_at.replace(tzinfo=timezone.utc)
     body = {
         "id": meeting.id, "title": meeting.title,
+        "expected_member_count": meeting.expected_member_count,
+        "recommendation_options": meeting.recommendation_options,
+        "progress": progress(meeting), "processing_error": meeting.processing_error,
         "candidate_dates": meeting.candidate_dates, "time_range": meeting.time_range,
         "slot_minutes": meeting.slot_minutes, "status": meeting.status,
         "confirmed": meeting.confirmed, "confirmed_place": meeting.confirmed_place,
         "revision": meeting.revision, "created_at": created_at.isoformat(),
         "members": [{"id": m.id, "name": m.name, "is_host": m.is_host,
+                     "submitted_at": m.submitted_at.isoformat() if m.submitted_at else None,
                      "availability": m.availability, "availability_submitted": m.availability_submitted,
                      "preference": m.preference} for m in meeting.members],
         "recommendation_result": result,

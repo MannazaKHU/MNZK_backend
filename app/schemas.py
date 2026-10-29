@@ -47,6 +47,8 @@ def default_dates():
 class CreateMeetingReq(Input):
     title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40)] = "우리 모임"
     host_name: Name = "방장"
+    expected_member_count: int = Field(ge=1, le=10, description="방장 포함 총 참여 인원. 생성 시 필수")
+    recommendation_options: "RecommendReq" = Field(default_factory=lambda: RecommendReq())
     candidate_dates: list[str] = Field(default_factory=default_dates, min_length=1, max_length=14)
     time_range: TimeRange = Field(default_factory=TimeRange)
     slot_minutes: Literal[30, 60] = 60
@@ -70,10 +72,6 @@ class JoinReq(Input):
     invite_code: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
 
 
-class AvailabilityReq(Input):
-    availability: dict[str, list[str]] = Field(max_length=14)
-
-
 class TextReq(Input):
     text: Text
 
@@ -84,17 +82,18 @@ class Location(Input):
     lng: float = Field(ge=-180, le=180, allow_inf_nan=False)
 
 
-class PreferenceReq(Input):
-    text: Text
+class SubmissionReq(Input):
+    availability: dict[str, list[str]] = Field(max_length=14)
+    start_location_text: str = Field(default="", max_length=200)
     start_location: Location | None = None
+    desired_text: str = Field(max_length=500)
+    avoided_text: str = Field(max_length=500)
 
-
-class ConfirmReq(TimeRange):
-    date: str
-    start: str
-    end: str
-    allow_partial: bool = False
-    _date = field_validator("date")(check_date)
+    @model_validator(mode="after")
+    def location_required(self):
+        if self.start_location is None and not self.start_location_text.strip():
+            raise ValueError("출발지 이름 또는 좌표를 입력해 주세요.")
+        return self
 
 
 class RecommendReq(Input):

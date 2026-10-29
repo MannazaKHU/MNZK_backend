@@ -1,7 +1,7 @@
 # MeetFlow backend
 
-그룹의 **시간 합의·확정 → 장소 추천 → 장소 최종 확정**을 처리하는 FastAPI 백엔드입니다.
-가능 시간과 장소 조건은 시간 확정 전에도 입력할 수 있습니다.
+그룹의 **N명 전원 응답 → 공통 시간·장소 자동 추천 → 장소 최종 확정**을 처리하는 FastAPI 백엔드입니다.
+각 참가자는 가능한 날짜·시간·출발지·선호·비선호를 한 번에 제출합니다.
 
 - 여러 모임을 PostgreSQL에 독립적으로 저장합니다.
 - 방장·참여자는 각자 발급받은 Bearer 토큰으로 접근합니다.
@@ -66,32 +66,35 @@ python -m app
 
 ## API 흐름
 
-1. `POST /api/meetings`: 방장 이름과 모임 조건으로 생성 → 모임 ID, 방장 토큰, 초대 코드 수신
-2. `POST /api/meetings/{id}/members`: 초대 코드와 이름으로 참여 → 참여자 토큰 수신
-3. 각자 `PUT /api/meetings/{id}/members/me/availability`로 가능 시간 저장
-4. 각자 `PUT /api/meetings/{id}/members/me/preference`로 선호·출발지 저장
-5. `GET /api/meetings/{id}/schedule`로 후보 시간 비교
-6. 방장이 `POST /api/meetings/{id}/schedule/confirm`으로 시간 확정
-7. 방장이 `POST /api/meetings/{id}/recommend`로 장소 추천
-8. 방장이 `POST /api/meetings/{id}/place/confirm`으로 장소 최종 확정
+1. `POST /api/meetings`: `expected_member_count`에 방장 포함 총 인원 N명(현재 1~10명)을 지정해 생성
+2. `POST /api/meetings/{id}/members`: 초대 코드·이름으로 참여하고 본인 토큰 수신
+3. 각자 `PUT /api/meetings/{id}/members/me/submission`으로 일정·출발지·선호·비선호를 한 번에 제출
+4. N명 미만 제출 시 `waiting`과 남은 인원 표시
+5. N명 전원 제출 시 서버가 `processing`으로 전환하고 공통 시간·장소를 자동 계산
+6. `GET /api/meetings/{id}`로 상태를 조회해 `recommended` 결과 표시
+7. 방장이 `POST /api/meetings/{id}/place/confirm`으로 최종 장소 선택
+
+모임 생성 시 인원수는 필수이며 4명으로 고정되지 않습니다.
+가입 인원과 응답 완료 인원은 별개입니다. 같은 사람의 중복 제출은 완료 인원을 늘리지 않습니다.
+응답 수정 시 이전 결과를 해제하고 전원 제출 상태이면 다시 자동 처리합니다.
+개별 일정·선호 저장과 방장 수동 시간 확정 방식은 전체 응답 제출 방식으로 변경되었습니다.
 
 생성·참여 외 모임 API에는 `Authorization: Bearer <access_token>`이 필요합니다.
-본인 입력에는 이름이나 참여자 ID를 보내지 않습니다. 토큰으로 본인을 식별합니다.
-토큰은 생성·참여 응답에서만 반환되며 DB에는 해시로 저장합니다.
-초대 코드는 방장 응답에서만 반환됩니다. 동일 모임의 표시 이름은 중복할 수 없습니다.
+원본 토큰은 생성·참여 때만 반환하며 DB에는 해시로 저장합니다.
+방장만 초대 코드 조회·최종 장소 확정이 가능하고, 상태 조회·본인 응답·실패한 추천 재시도는 모든 참여자가 가능합니다.
 
-상태는 `collecting → scheduled → recommended → finalized`입니다.
+상태는 `waiting → processing → recommended → finalized`입니다.
+공통 시간이 없으면 `schedule_conflict`, 처리 실패는 `failed`와 `processing_error`를 반환합니다.
+공통 시간은 전원이 가능한 가장 긴 연속 구간으로 자동 선택합니다.
+서버가 반환한 공통 시간대와 추천 결과는 프론트가 표시합니다.
 
-- 시간 확정은 기본적으로 전원 참석 가능한 구간만 허용합니다.
-- 일부 인원만 참석시키려면 방장이 `allow_partial: true`를 명시해야 합니다.
-- 일부 참석 확정 시 참석자만 장소 추천과 이동 거리 계산에 포함합니다.
-- 추천 전 참석자 전원의 선호·출발지 입력이 필요합니다.
-- 일정 변경 또는 새 참여자 추가 시 시간·장소 확정을 모두 해제합니다.
-- 선호 변경 시 시간은 유지하고 추천·장소 확정을 해제합니다.
-- 외부 API를 기다리는 동안 입력이 바뀌면 결과를 저장하지 않고 `409 MEETING_CHANGED`를 반환합니다.
-- 장소 확정 시 추천을 조회했을 때의 `revision`을 보내야 합니다.
+마지막 제출 요청에서 추천 계산을 진행하며 그동안 다른 참여자는 GET으로 processing을 확인할 수 있습니다.
+프론트의 자동 화면 전환은 상태를 주기적으로 조회해 구현합니다. 현재 이벤트 푸시나 지속 작업 큐는 없습니다.
+이미 저장한 동일 응답·추천 재요청은 결과를 중복 생성하지 않습니다.
+서버 중단으로 processing 상태가 10분 이상 지속되면 `POST /api/meetings/{id}/recommend`로 재시도할 수 있습니다.
 
-요청·응답 예제와 프론트 변경 사항은 [docs/API.md](docs/API.md)에 있습니다.
+요청·응답 예제는 [docs/API.md](docs/API.md)에 있습니다.
+프론트 버튼·입력 항목과 API 연결 관계는 [프론트 연동 검토](docs/FRONTEND_REVIEW.md)에 정리했습니다.
 
 ## ChatKHU 연결
 
@@ -164,8 +167,8 @@ CLOVA 관련 변수와 JSON 저장용 `DATA_PATH`는 더 이상 사용하지 않
 
 테이블별 필드·관계·JSON 구조는 [데이터베이스 명세](docs/DATABASE.md)에 정리했습니다.
 
-- `meetings`: 모임 조건, 상태, 확정 시간·장소, 현재 추천, 버전
-- `members`: 모임별 참여자, 토큰 해시, 입력 여부, 가능 시간·선호(JSON)
+- `meetings`: 목표 인원, 추천 옵션, 처리 상태, 공통 시간·장소, 현재 추천, 버전
+- `members`: 모임별 참여자, 토큰 해시, 전체 응답 제출 시각, 가능 시간·선호(JSON)
 - `recommendation_runs`: 추천 요청, 생성 당시 버전, 추천 결과 이력
 
 새 마이그레이션:

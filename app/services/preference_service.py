@@ -90,6 +90,24 @@ async def build_preference(text: str, start_location: dict = None) -> tuple:
     return pref, loc is not None
 
 
+async def build_submission_preference(req) -> dict:
+    """Keep explicit positive/negative inputs and resolve the explicitly supplied origin."""
+    text = f"원하는 조건: {req.desired_text or '특별한 조건 없음'}. 피하고 싶은 조건: {req.avoided_text or '없음'}."
+    parsed = await parse_preference(text)
+    if settings.MOCK_MODE:
+        good, bad = _rule_parse(req.desired_text), _rule_parse(req.avoided_text)
+        parsed.update(likes=good["likes"], dislikes=list(dict.fromkeys(
+            good["dislikes"] + bad["likes"] + bad["dislikes"])))
+    loc = req.start_location.model_dump() if req.start_location else await naver.geocode(req.start_location_text.strip())
+    if not loc:
+        raise ApiError(400, "LOCATION_NOT_FOUND", "출발지를 찾지 못했어요. 구체적인 장소명이나 좌표를 입력해 주세요.")
+    return {"raw_text": text, "likes": parsed["likes"], "dislikes": parsed["dislikes"],
+            "mood": parsed["mood"], "budget_max": parsed["budget_max"], "indoor": parsed["indoor"],
+            "start_location": loc, "start_location_text": req.start_location_text,
+            "desired_text": req.desired_text, "avoided_text": req.avoided_text,
+            "submission_input": req.model_dump(exclude={"availability"})}
+
+
 def merge_group(prefs: list) -> dict:
     """여러 명의 조건 합치기: likes 많이 나온 순, dislikes 전부, 예산 최소, 실내 다수결."""
     likes = Counter(w for p in prefs for w in p["likes"])

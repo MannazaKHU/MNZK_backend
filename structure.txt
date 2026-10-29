@@ -22,7 +22,8 @@ MNZK_backend/
 │   ├── services/
 │   │   ├── schedule_service.py
 │   │   ├── preference_service.py
-│   │   └── recommend_service.py
+│   │   ├── recommend_service.py
+│   │   └── submission_service.py # N명 전원 제출 집계·자동 추천 처리
 │   └── routers/
 │       ├── meetings.py   # /api/meetings/{meeting_id}/...
 │       └── misc.py       # health·readiness·개발용 usage
@@ -33,4 +34,6 @@ MNZK_backend/
 │   └── smoke_test.py      # 명시적으로 실행하는 실제 Gateway 점검
 ├── tests/
 └── docs/
-    └── API.md             # 프론트 연동 계약·이전 API 변경 사항
+    ├── API.md             # 전원 응답 자동 추천 API
+    ├── DATABASE.md        # 테이블·필드 명세
+    └── FRONTEND_REVIEW.md # 입력 항목·API 연결 관계
