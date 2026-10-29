@@ -41,6 +41,7 @@ class Settings:
         self.NCP_MAPS_KEY_ID = os.getenv("NCP_MAPS_KEY_ID", "")
         self.NCP_MAPS_KEY = os.getenv("NCP_MAPS_KEY", "")
         self.NCP_MAPS_BASE = os.getenv("NCP_MAPS_BASE", "https://maps.apigw.ntruss.com")
+        self.MAPS_TIMEOUT_SECONDS = float(os.getenv("MAPS_TIMEOUT_SECONDS", "10"))
         self.CORS_ORIGINS = [s.strip() for s in os.getenv(
             "CORS_ORIGINS", "http://localhost:5173,http://localhost:3000"
         ).split(",") if s.strip()]
@@ -60,6 +61,8 @@ class Settings:
             raise ValueError("AI_PROVIDER must be mock or chatkhu")
         if self.MAPS_PROVIDER not in {"mock", "naver"}:
             raise ValueError("MAPS_PROVIDER must be mock or naver")
+        if not 0 < self.MAPS_TIMEOUT_SECONDS < float("inf"):
+            raise ValueError("MAPS_TIMEOUT_SECONDS must be positive and finite")
         if self.AI_TIMEOUT_SECONDS <= 0 or self.AI_MAX_TOKENS < 1:
             raise ValueError("AI timeout and token limit must be positive")
         if self.AI_PROVIDER == "chatkhu":
@@ -72,6 +75,11 @@ class Settings:
             self.NAVER_CLIENT_ID, self.NAVER_CLIENT_SECRET, self.NCP_MAPS_KEY_ID, self.NCP_MAPS_KEY
         )):
             raise ValueError("Set NAVER_CLIENT_ID/SECRET and NCP_MAPS_KEY_ID/KEY")
+        if self.MAPS_PROVIDER == "naver":
+            for name in ("NAVER_SEARCH_URL", "NCP_MAPS_BASE"):
+                url = urlsplit(getattr(self, name))
+                if url.scheme != "https" or not url.netloc or url.username or url.query or url.fragment:
+                    raise ValueError(f"{name} must be an HTTPS URL")
 
 
 settings = Settings()

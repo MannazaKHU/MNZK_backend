@@ -216,9 +216,12 @@ docker compose exec api python -m scripts.smoke_test --completion
 | `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET` | NAVER API HUB 검색 인증 | 미설정 |
 | `NAVER_SEARCH_URL` | 지역 검색 주소 | .env.example 참고 |
 | `NCP_MAPS_KEY_ID`, `NCP_MAPS_KEY`, `NCP_MAPS_BASE` | NCP Maps 길찾기·좌표 변환 | .env.example 참고 |
+| `MAPS_TIMEOUT_SECONDS` | 네이버 API 요청별 제한 시간(초) | 10 |
 
 `APP_ENV=production`에서는 docs·OpenAPI·개발용 usage API를 노출하지 않습니다.
 기존 `MOCK_MODE=1/0/true/false`도 읽지만 `AI_PROVIDER`와 `MAPS_PROVIDER` 설정이 우선합니다.
+
+네이버 키 발급·환경변수·개별 연결 확인·Railway 적용은 [네이버 연동 가이드](docs/NAVER.md)를 참고하세요.
 CLOVA 관련 변수와 JSON 저장용 `DATA_PATH`는 더 이상 사용하지 않습니다.
 
 ## DB와 마이그레이션

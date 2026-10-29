@@ -8,6 +8,7 @@ COPY --chown=app:app migrations ./migrations
 COPY --chown=app:app alembic.ini ./alembic.ini
 COPY --chown=app:app scripts/smoke_test.py ./scripts/smoke_test.py
 COPY --chown=app:app scripts/check_database.py ./scripts/check_database.py
+COPY --chown=app:app scripts/check_naver.py ./scripts/check_naver.py
 RUN mkdir -p /app/data && chown app:app /app/data
 USER app
 EXPOSE 8000
