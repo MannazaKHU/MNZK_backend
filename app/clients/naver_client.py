@@ -176,7 +176,7 @@ async def driving(start: dict, goal: dict):
         return None
     summary = routes[0]["summary"]
     return {"distance_km": round(summary["distance"] / 1000, 1),
-            "minutes": max(1, round(summary["duration"] / 60000))}
+            "minutes": summary["duration"] / 60000}
 
 
 async def nearest_station(lat: float, lng: float):

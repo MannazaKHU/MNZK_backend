@@ -1,0 +1,468 @@
+{
+  "fixture_only": true,
+  "notice": "직접 작성한 모의 데이터이며 실제 네이버 검색 결과가 아닙니다.",
+  "meeting_id": "fixture-meeting",
+  "recommendations": [
+    {
+      "place": {
+        "id": "fixture-place",
+        "name": "봄식당 강남점",
+        "address": "서울특별시 강남구 역삼동 1",
+        "category": "음식점",
+        "distance_m": 100.0,
+        "phone": "",
+        "url": "",
+        "facts": [],
+        "blog_evidence": [
+          {
+            "place_id": "fixture-place",
+            "condition_id": "3a68b56981fd59696baa",
+            "target": "조용한",
+            "url": "https://fixture.invalid/blog/1",
+            "postdate": "2026-10-20",
+            "fetched_at": "2026-10-29T09:00:00+09:00",
+            "quote": "조용하게 식사했다.",
+            "quote_field": "description",
+            "identity_quote": "봄식당 강남점",
+            "relation": "supports",
+            "observation": "matches",
+            "place_match": "matched",
+            "context_quotes": [],
+            "data_origin": "fixture",
+            "information_type": "review_estimate",
+            "usable": true,
+            "unused_reasons": []
+          }
+        ],
+        "blog_enrichment": {
+          "performed": true,
+          "search_status": "succeeded",
+          "status": "evaluated",
+          "document_count": 1,
+          "failures": [],
+          "rejected_claims": [],
+          "searches": [
+            {
+              "query": "봄식당 강남점 역삼동 분위기",
+              "status": "success",
+              "fetched_at": "2026-10-29T09:00:00+09:00",
+              "failure_code": null,
+              "data_origin": "fixture"
+            }
+          ]
+        }
+      },
+      "place_id": "fixture-place",
+      "eligibility": "eligible",
+      "rank": 1,
+      "score": 77.85714285714286,
+      "score_status": "calculated",
+      "score_failure_reason": null,
+      "raw_scores": {
+        "D": 80.0,
+        "P": 75,
+        "N": null
+      },
+      "weights": {
+        "D": 0.5714285714285715,
+        "P": 0.4285714285714286
+      },
+      "contributions": {
+        "D": 45.71428571428572,
+        "P": 32.142857142857146
+      },
+      "travel": [
+        {
+          "place_id": "fixture-place",
+          "member_id": "fixture-member",
+          "status": "success",
+          "duration": 720.0,
+          "unit": "seconds",
+          "mode": "driving",
+          "source": "fixture:driving",
+          "failure_code": null,
+          "member": null,
+          "straight_km": null,
+          "driving_km": null,
+          "text": "",
+          "driving_minutes": 12.0,
+          "from": null
+        }
+      ],
+      "travel_summary": {
+        "score": 80.0,
+        "average_minutes": 12.0,
+        "maximum_minutes": 12.0,
+        "mode": "driving",
+        "failure_reason": null
+      },
+      "condition_evaluations": [
+        {
+          "category": "atmosphere",
+          "target": "조용한",
+          "alternatives": [],
+          "direction": "preference",
+          "strength": "desired",
+          "scope": "place",
+          "raw_text": "조용한 곳 선호",
+          "needs_confirmation": false,
+          "operator": "eq",
+          "value": null,
+          "unit": null,
+          "member_id": "fixture-member",
+          "id": "3a68b56981fd59696baa",
+          "status": "unknown",
+          "score": 75,
+          "evidence": "모의 후기 데이터가 원하는 결과를 지지합니다. 실제 검색·확정 정보가 아닙니다.",
+          "sources": [
+            "https://fixture.invalid/blog/1"
+          ],
+          "evidence_facts": [],
+          "review_evidence": [
+            {
+              "place_id": "fixture-place",
+              "condition_id": "3a68b56981fd59696baa",
+              "target": "조용한",
+              "url": "https://fixture.invalid/blog/1",
+              "postdate": "2026-10-20",
+              "fetched_at": "2026-10-29T09:00:00+09:00",
+              "quote": "조용하게 식사했다.",
+              "quote_field": "description",
+              "identity_quote": "봄식당 강남점",
+              "relation": "supports",
+              "observation": "matches",
+              "place_match": "matched",
+              "context_quotes": [],
+              "data_origin": "fixture",
+              "information_type": "review_estimate",
+              "usable": true,
+              "unused_reasons": [],
+              "applied": true
+            }
+          ],
+          "evidence_level": "review_estimate",
+          "review_conflict": false,
+          "assessment_status": "estimated_support"
+        }
+      ],
+      "required_checks": [],
+      "personal": {
+        "preference": [
+          {
+            "member_id": "fixture-member",
+            "categories": {
+              "atmosphere": 75
+            },
+            "score": 75
+          }
+        ],
+        "avoidance": []
+      },
+      "confirmed_condition_count": 0,
+      "estimated_condition_count": 1,
+      "total_condition_count": 1,
+      "unknown_condition_count": 0,
+      "conflicts": [],
+      "policy_version": "recommendation-v2-blog",
+      "policy": {
+        "version": "recommendation-v2-blog",
+        "travel_weight": 0.4,
+        "preference_weight": 0.3,
+        "avoidance_weight": 0.3,
+        "travel_limit_minutes": 60,
+        "average_share": 0.5,
+        "maximum_share": 0.5,
+        "unknown_score": 50,
+        "review_support_score": 75,
+        "review_conflict_score": 25
+      },
+      "reason": "확보한 정보와 추천 정책으로 계산한 결과입니다.",
+      "matched": [],
+      "blog_enrichment": {
+        "performed": true,
+        "search_status": "succeeded",
+        "status": "evaluated",
+        "document_count": 1,
+        "failures": [],
+        "rejected_claims": [],
+        "searches": [
+          {
+            "query": "봄식당 강남점 역삼동 분위기",
+            "status": "success",
+            "fetched_at": "2026-10-29T09:00:00+09:00",
+            "failure_code": null,
+            "data_origin": "fixture"
+          }
+        ]
+      },
+      "warnings": [
+        "영업시간·예약 가능 여부는 확인이 필요합니다.",
+        "일부 후보의 검색된 후기 범위에서 평가하며 전체 후보 중 절대 최적을 보장하지 않습니다."
+      ],
+      "travel_text": [
+        ""
+      ]
+    }
+  ],
+  "candidate_evaluations": [
+    {
+      "place": {
+        "id": "fixture-place",
+        "name": "봄식당 강남점",
+        "address": "서울특별시 강남구 역삼동 1",
+        "category": "음식점",
+        "distance_m": 100.0,
+        "phone": "",
+        "url": "",
+        "facts": [],
+        "blog_evidence": [
+          {
+            "place_id": "fixture-place",
+            "condition_id": "3a68b56981fd59696baa",
+            "target": "조용한",
+            "url": "https://fixture.invalid/blog/1",
+            "postdate": "2026-10-20",
+            "fetched_at": "2026-10-29T09:00:00+09:00",
+            "quote": "조용하게 식사했다.",
+            "quote_field": "description",
+            "identity_quote": "봄식당 강남점",
+            "relation": "supports",
+            "observation": "matches",
+            "place_match": "matched",
+            "context_quotes": [],
+            "data_origin": "fixture",
+            "information_type": "review_estimate",
+            "usable": true,
+            "unused_reasons": []
+          }
+        ],
+        "blog_enrichment": {
+          "performed": true,
+          "search_status": "succeeded",
+          "status": "evaluated",
+          "document_count": 1,
+          "failures": [],
+          "rejected_claims": [],
+          "searches": [
+            {
+              "query": "봄식당 강남점 역삼동 분위기",
+              "status": "success",
+              "fetched_at": "2026-10-29T09:00:00+09:00",
+              "failure_code": null,
+              "data_origin": "fixture"
+            }
+          ]
+        }
+      },
+      "place_id": "fixture-place",
+      "eligibility": "eligible",
+      "rank": 1,
+      "score": 77.85714285714286,
+      "score_status": "calculated",
+      "score_failure_reason": null,
+      "raw_scores": {
+        "D": 80.0,
+        "P": 75,
+        "N": null
+      },
+      "weights": {
+        "D": 0.5714285714285715,
+        "P": 0.4285714285714286
+      },
+      "contributions": {
+        "D": 45.71428571428572,
+        "P": 32.142857142857146
+      },
+      "travel": [
+        {
+          "place_id": "fixture-place",
+          "member_id": "fixture-member",
+          "status": "success",
+          "duration": 720.0,
+          "unit": "seconds",
+          "mode": "driving",
+          "source": "fixture:driving",
+          "failure_code": null,
+          "member": null,
+          "straight_km": null,
+          "driving_km": null,
+          "text": "",
+          "driving_minutes": 12.0,
+          "from": null
+        }
+      ],
+      "travel_summary": {
+        "score": 80.0,
+        "average_minutes": 12.0,
+        "maximum_minutes": 12.0,
+        "mode": "driving",
+        "failure_reason": null
+      },
+      "condition_evaluations": [
+        {
+          "category": "atmosphere",
+          "target": "조용한",
+          "alternatives": [],
+          "direction": "preference",
+          "strength": "desired",
+          "scope": "place",
+          "raw_text": "조용한 곳 선호",
+          "needs_confirmation": false,
+          "operator": "eq",
+          "value": null,
+          "unit": null,
+          "member_id": "fixture-member",
+          "id": "3a68b56981fd59696baa",
+          "status": "unknown",
+          "score": 75,
+          "evidence": "모의 후기 데이터가 원하는 결과를 지지합니다. 실제 검색·확정 정보가 아닙니다.",
+          "sources": [
+            "https://fixture.invalid/blog/1"
+          ],
+          "evidence_facts": [],
+          "review_evidence": [
+            {
+              "place_id": "fixture-place",
+              "condition_id": "3a68b56981fd59696baa",
+              "target": "조용한",
+              "url": "https://fixture.invalid/blog/1",
+              "postdate": "2026-10-20",
+              "fetched_at": "2026-10-29T09:00:00+09:00",
+              "quote": "조용하게 식사했다.",
+              "quote_field": "description",
+              "identity_quote": "봄식당 강남점",
+              "relation": "supports",
+              "observation": "matches",
+              "place_match": "matched",
+              "context_quotes": [],
+              "data_origin": "fixture",
+              "information_type": "review_estimate",
+              "usable": true,
+              "unused_reasons": [],
+              "applied": true
+            }
+          ],
+          "evidence_level": "review_estimate",
+          "review_conflict": false,
+          "assessment_status": "estimated_support"
+        }
+      ],
+      "required_checks": [],
+      "personal": {
+        "preference": [
+          {
+            "member_id": "fixture-member",
+            "categories": {
+              "atmosphere": 75
+            },
+            "score": 75
+          }
+        ],
+        "avoidance": []
+      },
+      "confirmed_condition_count": 0,
+      "estimated_condition_count": 1,
+      "total_condition_count": 1,
+      "unknown_condition_count": 0,
+      "conflicts": [],
+      "policy_version": "recommendation-v2-blog",
+      "policy": {
+        "version": "recommendation-v2-blog",
+        "travel_weight": 0.4,
+        "preference_weight": 0.3,
+        "avoidance_weight": 0.3,
+        "travel_limit_minutes": 60,
+        "average_share": 0.5,
+        "maximum_share": 0.5,
+        "unknown_score": 50,
+        "review_support_score": 75,
+        "review_conflict_score": 25
+      },
+      "reason": "확보한 정보와 추천 정책으로 계산한 결과입니다.",
+      "matched": [],
+      "blog_enrichment": {
+        "performed": true,
+        "search_status": "succeeded",
+        "status": "evaluated",
+        "document_count": 1,
+        "failures": [],
+        "rejected_claims": [],
+        "searches": [
+          {
+            "query": "봄식당 강남점 역삼동 분위기",
+            "status": "success",
+            "fetched_at": "2026-10-29T09:00:00+09:00",
+            "failure_code": null,
+            "data_origin": "fixture"
+          }
+        ]
+      },
+      "warnings": [
+        "영업시간·예약 가능 여부는 확인이 필요합니다.",
+        "일부 후보의 검색된 후기 범위에서 평가하며 전체 후보 중 절대 최적을 보장하지 않습니다."
+      ],
+      "travel_text": [
+        ""
+      ]
+    }
+  ],
+  "blog_enrichment": {
+    "connection_status": "supplied",
+    "enabled": true,
+    "external_requests_made": 0,
+    "external_requests_scope": "search_only",
+    "search_requests_made": 0,
+    "extraction_attempt_count": 1,
+    "processing_limits": {
+      "max_candidates": 5,
+      "queries_per_candidate": 2,
+      "results_per_query": 5,
+      "max_queries": 10,
+      "extraction_concurrency": 3,
+      "extraction_timeout_seconds": 20,
+      "max_age_days": 180
+    },
+    "selection_policy": "center_distance_then_place_id",
+    "candidate_count": 1,
+    "selected_count": 1,
+    "performed_count": 1,
+    "accepted_query_count": 1,
+    "unique_url_count": 1,
+    "partial_coverage": false,
+    "failures": [],
+    "data_origins": [
+      "fixture"
+    ],
+    "scope_note": "제공된 일부 후보·검색 요약문 범위에서 평가합니다. 전체 후보 중 절대 최적을 뜻하지 않습니다.",
+    "search_tasks": [
+      {
+        "place_id": "fixture-place",
+        "query": "봄식당 강남점 서울특별시 강남구 역삼동 분위기",
+        "condition_ids": [
+          "3a68b56981fd59696baa"
+        ],
+        "max_results": 5
+      }
+    ]
+  },
+  "conditions": [
+    {
+      "category": "atmosphere",
+      "target": "조용한",
+      "alternatives": [],
+      "direction": "preference",
+      "strength": "desired",
+      "scope": "place",
+      "raw_text": "조용한 곳 선호",
+      "needs_confirmation": false,
+      "operator": "eq",
+      "value": null,
+      "unit": null,
+      "member_id": "fixture-member",
+      "id": "3a68b56981fd59696baa"
+    }
+  ],
+  "policy_version": "recommendation-v2-blog",
+  "recommendation_status": "available",
+  "message": null
+}

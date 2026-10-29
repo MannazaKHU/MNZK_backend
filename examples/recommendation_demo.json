@@ -1,0 +1,393 @@
+{
+  "meeting_id": "fixture-meeting",
+  "conditions": [
+    {
+      "category": "kind",
+      "target": "짬뽕",
+      "alternatives": [],
+      "direction": "preference",
+      "strength": "desired",
+      "scope": "menu",
+      "raw_text": "짬뽕 좋아",
+      "needs_confirmation": false,
+      "operator": "eq",
+      "value": null,
+      "unit": null,
+      "member_id": "member-a",
+      "id": "c14a6a1ba5e73ba1f2eb"
+    },
+    {
+      "category": "kind",
+      "target": "회",
+      "alternatives": [],
+      "direction": "avoidance",
+      "strength": "desired",
+      "scope": "menu",
+      "raw_text": "회 싫어",
+      "needs_confirmation": false,
+      "operator": "eq",
+      "value": null,
+      "unit": null,
+      "member_id": "member-b",
+      "id": "e670753904b24d0ff546"
+    }
+  ],
+  "recommendations": [
+    {
+      "place": {
+        "id": "fixture-place",
+        "name": "시연 식당",
+        "facts": [
+          {
+            "scope": "menu",
+            "target": "짬뽕",
+            "value": true,
+            "source": "fixture:menu"
+          },
+          {
+            "scope": "menu",
+            "target": "회",
+            "value": false,
+            "source": "fixture:verified-complete-menu"
+          }
+        ]
+      },
+      "place_id": "fixture-place",
+      "eligibility": "eligible",
+      "rank": 1,
+      "score": 84.0,
+      "score_status": "calculated",
+      "score_failure_reason": null,
+      "raw_scores": {
+        "D": 60.0,
+        "P": 100,
+        "N": 100
+      },
+      "weights": {
+        "D": 0.4,
+        "P": 0.3,
+        "N": 0.3
+      },
+      "contributions": {
+        "D": 24.0,
+        "P": 30.0,
+        "N": 30.0
+      },
+      "travel": [
+        {
+          "member_id": "member-a",
+          "driving_minutes": 12,
+          "source": "fixture:driving",
+          "mode": "driving"
+        },
+        {
+          "member_id": "member-b",
+          "driving_minutes": 20,
+          "source": "fixture:driving",
+          "mode": "driving"
+        },
+        {
+          "member_id": "member-c",
+          "driving_minutes": 28,
+          "source": "fixture:driving",
+          "mode": "driving"
+        }
+      ],
+      "travel_summary": {
+        "score": 60.0,
+        "average_minutes": 20.0,
+        "maximum_minutes": 28.0,
+        "mode": "driving",
+        "failure_reason": null
+      },
+      "condition_evaluations": [
+        {
+          "category": "kind",
+          "target": "짬뽕",
+          "alternatives": [],
+          "direction": "preference",
+          "strength": "desired",
+          "scope": "menu",
+          "raw_text": "짬뽕 좋아",
+          "needs_confirmation": false,
+          "operator": "eq",
+          "value": null,
+          "unit": null,
+          "member_id": "member-a",
+          "id": "c14a6a1ba5e73ba1f2eb",
+          "status": "satisfied",
+          "score": 100,
+          "evidence": "검증된 속성 근거",
+          "sources": [
+            "fixture:menu"
+          ],
+          "evidence_facts": [
+            {
+              "scope": "menu",
+              "target": "짬뽕",
+              "value": true,
+              "source": "fixture:menu"
+            }
+          ]
+        },
+        {
+          "category": "kind",
+          "target": "회",
+          "alternatives": [],
+          "direction": "avoidance",
+          "strength": "desired",
+          "scope": "menu",
+          "raw_text": "회 싫어",
+          "needs_confirmation": false,
+          "operator": "eq",
+          "value": null,
+          "unit": null,
+          "member_id": "member-b",
+          "id": "e670753904b24d0ff546",
+          "status": "satisfied",
+          "score": 100,
+          "evidence": "검증된 속성 근거",
+          "sources": [
+            "fixture:verified-complete-menu"
+          ],
+          "evidence_facts": [
+            {
+              "scope": "menu",
+              "target": "회",
+              "value": false,
+              "source": "fixture:verified-complete-menu"
+            }
+          ]
+        }
+      ],
+      "required_checks": [],
+      "personal": {
+        "preference": [
+          {
+            "member_id": "member-a",
+            "categories": {
+              "kind": 100
+            },
+            "score": 100
+          }
+        ],
+        "avoidance": [
+          {
+            "member_id": "member-b",
+            "categories": {
+              "kind": 100
+            },
+            "score": 100
+          }
+        ]
+      },
+      "confirmed_condition_count": 2,
+      "total_condition_count": 2,
+      "unknown_condition_count": 0,
+      "conflicts": [],
+      "policy_version": "recommendation-v1",
+      "policy": {
+        "version": "recommendation-v1",
+        "travel_weight": 0.4,
+        "preference_weight": 0.3,
+        "avoidance_weight": 0.3,
+        "travel_limit_minutes": 60,
+        "average_share": 0.5,
+        "maximum_share": 0.5,
+        "unknown_score": 50
+      },
+      "reason": "확보한 정보와 추천 정책으로 계산한 결과입니다.",
+      "matched": [
+        "짬뽕",
+        "회"
+      ],
+      "warnings": [
+        "영업시간·예약 가능 여부는 확인이 필요합니다."
+      ],
+      "travel_text": [
+        "",
+        "",
+        ""
+      ]
+    }
+  ],
+  "candidate_evaluations": [
+    {
+      "place": {
+        "id": "fixture-place",
+        "name": "시연 식당",
+        "facts": [
+          {
+            "scope": "menu",
+            "target": "짬뽕",
+            "value": true,
+            "source": "fixture:menu"
+          },
+          {
+            "scope": "menu",
+            "target": "회",
+            "value": false,
+            "source": "fixture:verified-complete-menu"
+          }
+        ]
+      },
+      "place_id": "fixture-place",
+      "eligibility": "eligible",
+      "rank": 1,
+      "score": 84.0,
+      "score_status": "calculated",
+      "score_failure_reason": null,
+      "raw_scores": {
+        "D": 60.0,
+        "P": 100,
+        "N": 100
+      },
+      "weights": {
+        "D": 0.4,
+        "P": 0.3,
+        "N": 0.3
+      },
+      "contributions": {
+        "D": 24.0,
+        "P": 30.0,
+        "N": 30.0
+      },
+      "travel": [
+        {
+          "member_id": "member-a",
+          "driving_minutes": 12,
+          "source": "fixture:driving",
+          "mode": "driving"
+        },
+        {
+          "member_id": "member-b",
+          "driving_minutes": 20,
+          "source": "fixture:driving",
+          "mode": "driving"
+        },
+        {
+          "member_id": "member-c",
+          "driving_minutes": 28,
+          "source": "fixture:driving",
+          "mode": "driving"
+        }
+      ],
+      "travel_summary": {
+        "score": 60.0,
+        "average_minutes": 20.0,
+        "maximum_minutes": 28.0,
+        "mode": "driving",
+        "failure_reason": null
+      },
+      "condition_evaluations": [
+        {
+          "category": "kind",
+          "target": "짬뽕",
+          "alternatives": [],
+          "direction": "preference",
+          "strength": "desired",
+          "scope": "menu",
+          "raw_text": "짬뽕 좋아",
+          "needs_confirmation": false,
+          "operator": "eq",
+          "value": null,
+          "unit": null,
+          "member_id": "member-a",
+          "id": "c14a6a1ba5e73ba1f2eb",
+          "status": "satisfied",
+          "score": 100,
+          "evidence": "검증된 속성 근거",
+          "sources": [
+            "fixture:menu"
+          ],
+          "evidence_facts": [
+            {
+              "scope": "menu",
+              "target": "짬뽕",
+              "value": true,
+              "source": "fixture:menu"
+            }
+          ]
+        },
+        {
+          "category": "kind",
+          "target": "회",
+          "alternatives": [],
+          "direction": "avoidance",
+          "strength": "desired",
+          "scope": "menu",
+          "raw_text": "회 싫어",
+          "needs_confirmation": false,
+          "operator": "eq",
+          "value": null,
+          "unit": null,
+          "member_id": "member-b",
+          "id": "e670753904b24d0ff546",
+          "status": "satisfied",
+          "score": 100,
+          "evidence": "검증된 속성 근거",
+          "sources": [
+            "fixture:verified-complete-menu"
+          ],
+          "evidence_facts": [
+            {
+              "scope": "menu",
+              "target": "회",
+              "value": false,
+              "source": "fixture:verified-complete-menu"
+            }
+          ]
+        }
+      ],
+      "required_checks": [],
+      "personal": {
+        "preference": [
+          {
+            "member_id": "member-a",
+            "categories": {
+              "kind": 100
+            },
+            "score": 100
+          }
+        ],
+        "avoidance": [
+          {
+            "member_id": "member-b",
+            "categories": {
+              "kind": 100
+            },
+            "score": 100
+          }
+        ]
+      },
+      "confirmed_condition_count": 2,
+      "total_condition_count": 2,
+      "unknown_condition_count": 0,
+      "conflicts": [],
+      "policy_version": "recommendation-v1",
+      "policy": {
+        "version": "recommendation-v1",
+        "travel_weight": 0.4,
+        "preference_weight": 0.3,
+        "avoidance_weight": 0.3,
+        "travel_limit_minutes": 60,
+        "average_share": 0.5,
+        "maximum_share": 0.5,
+        "unknown_score": 50
+      },
+      "reason": "확보한 정보와 추천 정책으로 계산한 결과입니다.",
+      "matched": [
+        "짬뽕",
+        "회"
+      ],
+      "warnings": [
+        "영업시간·예약 가능 여부는 확인이 필요합니다."
+      ],
+      "travel_text": [
+        "",
+        "",
+        ""
+      ]
+    }
+  ]
+}

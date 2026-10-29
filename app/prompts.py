@@ -55,7 +55,7 @@ AVAILABILITY_SCHEMA = {
 QUERY_SYSTEM = """너는 네이버 지도 검색어를 만드는 담당이다.
 그룹의 조건을 보고 실제 가게를 찾기 좋은 짧은 검색어 3~4개를 만든다.
 - 검색어는 '파스타', '이탈리안 레스토랑', '조용한 카페'처럼 2~10자 정도의 명사구.
-- 싫어하는 것(dislikes)이 들어간 검색어는 만들지 않는다.
+- 개인별 선호 검색어를 보존한다. 다른 사람의 비선호만으로 검색어를 제거하지 않는다.
 - 지역 이름은 넣지 않는다 (역 이름은 코드가 앞에 붙임)."""
 
 QUERY_SCHEMA = {
@@ -64,39 +64,21 @@ QUERY_SCHEMA = {
     "required": ["queries"],
 }
 
-# ④ 후보 랭킹: 그룹 조건 + 후보 -> 상위 N개
-RANK_SYSTEM = """너는 모임 장소 추천 담당이다.
-그룹 조건과 실제 가게 후보 목록이 주어진다. 후보 중에서 그룹에 가장 잘 맞는 곳을 요청한 개수만큼 고른다.
-규칙:
-- 반드시 후보 목록에 있는 id만 쓴다. 목록에 없는 가게를 만들지 않는다.
-- score 는 0~100 정수. 좋아하는 것과 분위기가 많이 맞을수록, 중간지점에서 가까울수록 높게.
-- reason 은 그룹 구성원에게 말하듯 1~2문장, 존댓말.
-- matched 는 이 가게가 만족한 조건 단어들.
-- warnings 는 확인이 필요한 점 (예: 가격 정보 없음). 없으면 빈 배열.
-- 점수가 높은 순서로 정렬해서 답한다."""
-
-RANK_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "picks": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "id": {"type": "string"},
-                    "score": {"type": "integer"},
-                    "reason": {"type": "string"},
-                    "matched": {"type": "array", "items": {"type": "string"}},
-                    "warnings": {"type": "array", "items": {"type": "string"}},
-                },
-                "required": ["id", "score", "reason", "matched", "warnings"],
-            },
-        }
-    },
-    "required": ["picks"],
-}
-
 # ⑤ 그룹 요약 한 줄
 SUMMARY_SYSTEM = """그룹의 장소 조건을 받아서 '이렇게 찾을게요' 카드에 넣을 한 문장(40자 이내)으로 요약한다.
 예: 조용하고 2만원 이하인 실내 양식집, 회·술집은 제외
 문장만 출력하고 다른 말은 하지 않는다."""
+from app.conditions import Condition
+PREFERENCE_SCHEMA['properties']['conditions'] = {'type':'array','items':Condition.model_json_schema()}
+PREFERENCE_SCHEMA['required'].append('conditions')
+PREFERENCE_SYSTEM += """
+conditions 배열에 실제 언급한 개별 요구만 구조화한다. 점수·순위는 생성하지 않는다.
+category: kind/cost/atmosphere/environment/accessibility/other.
+direction: preference/avoidance, strength: desired/required(명시한 필수만).
+scope: menu/shared_activity/place. 메뉴 싫음과 장소 자체 싫음을 구분한다.
+target은 대상, alternatives는 OR 대안이며 AND로 바꾸지 않는다.
+raw_text는 사용자 원문 정확한 부분 문자열. 불명확하면 needs_confirmation=true.
+operator: eq/lte/gte. 수량은 value, unit(KRW/minutes/people), 없으면 null.
+말하지 않은 조건과 대체 메뉴 선호를 추정하지 않는다. 충돌하는 의견도 보존한다.
+"""
+QUERY_SYSTEM += '\n다른 사람의 비선호 때문에 선호 검색어를 제거하지 않는다. 비선호는 일괄 장소 제외가 아니다.'

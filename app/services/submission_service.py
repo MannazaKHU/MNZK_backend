@@ -43,6 +43,8 @@ async def submit(factory, meeting_id, member_id, req, *, host=False):
 
     # No DB transaction/connection is held during preference parsing or geocoding.
     preference = await preference_service.build_submission_preference(req)
+    from app.services.recommendation_rules import normalize
+    preference["conditions"] = normalize(preference["conditions"], member_id)
     for attempt in range(store.MAX_MEMBERS):
         with factory() as db:
             meeting = store.get_meeting(db, meeting_id, lock=True)
@@ -113,7 +115,7 @@ async def process(factory, meeting_id, revision, *, host=False):
     try:
         result = await recommend_service.recommend(
             [{"id": m["id"], "name": m["name"], "preference": m["preference"]} for m in snapshot["members"]],
-            options["count"], options["radius_m"], options["extra_text"], schedule=schedule,
+            options["count"], options["radius_m"], options["extra_text"], schedule=schedule, meeting_id=meeting_id,
         )
     except asyncio.CancelledError:
         _finish(factory, meeting_id, revision, host=host, status="failed", schedule=schedule,
@@ -125,6 +127,7 @@ async def process(factory, meeting_id, revision, *, host=False):
         }
         logger.warning("Recommendation processing failed: %s", error["code"])
         return _finish(factory, meeting_id, revision, host=host, status="failed", schedule=schedule, error=error)
+    result["meeting_id"] = meeting_id
     return _finish(factory, meeting_id, revision, host=host, status="recommended", schedule=schedule, result=result)
 
 
