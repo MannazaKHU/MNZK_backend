@@ -1,0 +1,11 @@
+# Development overlay: live source reload, existing PostgreSQL volume retained.
+# docker compose -f compose.yaml -f compose.dev.yaml up -d --build --wait
+services:
+  api:
+    environment:
+      APP_ENV: development
+      WATCHFILES_FORCE_POLLING: "true"
+    volumes:
+      - ./app:/app/app:ro
+      - ./migrations:/app/migrations:ro
+      - ./alembic.ini:/app/alembic.ini:ro

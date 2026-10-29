@@ -8,6 +8,49 @@
 - AI는 ChatKHU Gateway, 지도는 NAVER API HUB / NCP Maps를 사용합니다.
 - AI·지도는 각각 MOCK 모드로 실행할 수 있으며 기본값은 모두 MOCK입니다.
 
+## 개발 환경
+
+IDE에서는 `MNZK_backend` 폴더 자체를 여세요. 프로젝트의 `.venv`를 Python 인터프리터로 사용합니다.
+`.vscode/settings.json`에 인터프리터·환경 파일·pytest 탐색 경로를 설정했습니다.
+이미 다른 인터프리터를 선택한 IDE에서는 Python 인터프리터 선택 메뉴에서 `.venv`를 선택하세요.
+
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements-dev.txt
+python scripts/setup_env.py
+```
+
+Windows에서는 `python -m venv .venv`, `.venv\Scripts\Activate.ps1`로 생성·활성화합니다.
+환경 생성 스크립트는 기존 `.env`를 유지합니다.
+
+개발용 API와 PostgreSQL 실행:
+
+```sh
+docker compose -f compose.yaml -f compose.dev.yaml up -d --build --wait
+```
+
+`app/` 소스 변경은 자동으로 서버를 다시 로드합니다.
+의존성 변경 시 위 명령으로 다시 빌드하고, 새 마이그레이션 추가 시에는 아래처럼 적용합니다.
+
+```sh
+docker compose -f compose.yaml -f compose.dev.yaml exec api python -m alembic upgrade head
+```
+
+개발 환경 확인·종료:
+
+```sh
+python -m pip check
+python -m pytest -q
+docker compose -f compose.yaml -f compose.dev.yaml logs --tail 50 api
+docker compose -f compose.yaml -f compose.dev.yaml down
+```
+
+IDE·로컬 테스트는 `.venv`, 실행 서버는 Docker의 PostgreSQL 구성을 사용합니다.
+직접 `python -m app`을 실행하면 `.env`의 기본 SQLite를 사용하므로 Docker DB와 데이터가 다릅니다.
+Docker API가 8000번 포트를 사용 중일 때 로컬 API를 함께 실행하려면 `PORT=8001 python -m app`처럼 다른 포트를 지정하세요.
+외부 키가 없는 기본 `.env`에서는 AI·지도 모두 MOCK 모드로 동작합니다.
+
 ## 로컬 실행: Docker + PostgreSQL
 
 Python 3.11 이상(환경 파일 생성용), Docker Desktop과 Docker Compose가 필요합니다.

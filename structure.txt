@@ -1,6 +1,8 @@
 MNZK_backend/
 ├── .env.example           # 실행 설정 예시 (.env는 Git 제외)
 ├── compose.yaml           # 로컬 FastAPI + PostgreSQL
+├── compose.dev.yaml       # 개발용 소스 마운트·자동 재시작
+├── .vscode/               # 프로젝트 Python·pytest 설정
 ├── Dockerfile
 ├── requirements.txt
 ├── requirements-dev.txt
