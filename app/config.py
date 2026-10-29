@@ -41,6 +41,18 @@ class Settings:
         self.NCP_MAPS_KEY_ID = os.getenv("NCP_MAPS_KEY_ID", "")
         self.NCP_MAPS_KEY = os.getenv("NCP_MAPS_KEY", "")
         self.NCP_MAPS_BASE = os.getenv("NCP_MAPS_BASE", "https://maps.apigw.ntruss.com")
+        # Official Developers Search credentials are separate from API Hub / Maps.
+        self.ENABLE_BLOG_ENRICHMENT = env_bool("ENABLE_BLOG_ENRICHMENT", False)
+        self.NAVER_BLOG_CLIENT_ID = os.getenv("NAVER_BLOG_CLIENT_ID", "")
+        self.NAVER_BLOG_CLIENT_SECRET = os.getenv("NAVER_BLOG_CLIENT_SECRET", "")
+        self.BLOG_MAX_CANDIDATES = int(os.getenv("BLOG_MAX_CANDIDATES", "5"))
+        self.BLOG_QUERIES_PER_CANDIDATE = int(os.getenv("BLOG_QUERIES_PER_CANDIDATE", "2"))
+        self.BLOG_RESULTS_PER_QUERY = int(os.getenv("BLOG_RESULTS_PER_QUERY", "5"))
+        self.BLOG_MAX_REQUESTS = int(os.getenv("BLOG_MAX_REQUESTS", "10"))
+        self.BLOG_CONCURRENCY = int(os.getenv("BLOG_CONCURRENCY", "3"))
+        self.BLOG_TIMEOUT_SECONDS = float(os.getenv("BLOG_TIMEOUT_SECONDS", "5"))
+        self.BLOG_EXTRACTION_TIMEOUT_SECONDS = float(os.getenv("BLOG_EXTRACTION_TIMEOUT_SECONDS", "20"))
+        self.BLOG_MAX_AGE_DAYS = int(os.getenv("BLOG_MAX_AGE_DAYS", "180"))
         self.MAPS_TIMEOUT_SECONDS = float(os.getenv("MAPS_TIMEOUT_SECONDS", "10"))
         self.CORS_ORIGINS = [s.strip() for s in os.getenv(
             "CORS_ORIGINS", "http://localhost:5173,http://localhost:3000"

@@ -1,0 +1,24 @@
+﻿{
+  "fixture_only": true,
+  "notice": "직접 작성한 모의 데이터이며 실제 네이버 검색 결과가 아닙니다.",
+  "inputs": {
+    "meeting_id": "fixture-meeting",
+    "participant_ids": ["fixture-member"],
+    "places": [{"id":"fixture-place","name":"봄식당 강남점","address":"서울특별시 강남구 역삼동 1","category":"음식점","distance_m":100}],
+    "travel_times": [{"place_id":"fixture-place","member_id":"fixture-member","status":"success","duration":720,"unit":"seconds","mode":"driving","source":"fixture:driving"}],
+    "blog_searches": [{
+      "place_id":"fixture-place", "query":"봄식당 강남점 역삼동 분위기", "status":"success",
+      "fetched_at":"2026-10-29T09:00:00+09:00", "data_origin":"fixture",
+      "items":[{"title":"봄식당 강남점 후기 (모의)","description":"봄식당 강남점에서 조용하게 식사했다.","url":"https://fixture.invalid/blog/1","postdate":"20261020"}]
+    }]
+  },
+  "condition_items": [{"category":"atmosphere","target":"조용한","raw_text":"조용한 곳 선호"}],
+  "schedule": {"date":"2026-11-02","start":"12:00","end":"13:00"},
+  "mock_claim": {
+    "document_index":0,"place_id":"fixture-place","target":"조용한",
+    "quote_field":"description","quote":"조용하게 식사했다.",
+    "identity_quote_field":"title","identity_quote":"봄식당 강남점",
+    "place_match":"matched","multiple_places":false,"observation":"matches",
+    "observed_value":null,"observed_unit":null,"context_quotes":[],"context_unclear":false
+  }
+}

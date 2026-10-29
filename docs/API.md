@@ -234,3 +234,17 @@ candidate_count, fallback, recommendations가 있습니다.
 - `schedule/confirm`과 일부 참석 확정 제거. 전원 공통 시간을 서버가 자동 선택
 - `recommend`는 수동 최초 실행 대신 실패·중단 처리 재시도용이며 모임 객체를 반환
 - waiting/processing/recommended/finalized/schedule_conflict/failed 및 progress 추가
+
+## 사용자 조건·추천 근거 확장
+
+개인 조건, 필수 자격 검사, 이동·선호·회피 점수와 프론트 추천 이유 토글은
+[사용자 조건과 추천 근거 API](RECOMMENDATION_RULES.md)를 참고하세요.
+기존 추천 경로와 응답 필드를 유지하고 조건·평가·기여분 필드를 추가했습니다.
+전체 요청·응답 시연 데이터는 `examples/recommendation_demo.json`에 있습니다.
+
+## 팀원 API 연동 경계와 후기 근거
+
+외부 API 인증·호출은 팀원 담당으로 분리했습니다. 이미 작성한 블로그 호출 초안은 비활성 상태로 보존합니다.
+활성 추천 경로는 장소·이동시간·선택적인 블로그 검색 결과를 `RecommendationInputs`로 전달받아 같은 정책으로 계산합니다.
+입력 데이터 계약, 필수/선택 항목, 추출 콜백, 모의 요청·응답과 연결 상태는
+[팀원 데이터 계약 초안](TEAM_RECOMMENDATION_DATA_CONTRACT.md)을 참고하세요.

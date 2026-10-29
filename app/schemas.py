@@ -82,7 +82,10 @@ class Location(Input):
     lng: float = Field(ge=-180, le=180, allow_inf_nan=False)
 
 
+from app.conditions import Condition
+
 class SubmissionReq(Input):
+    conditions: list[Condition] | None = Field(default=None, max_length=50)
     availability: dict[str, list[str]] = Field(max_length=14)
     start_location_text: str = Field(default="", max_length=200)
     start_location: Location | None = None
