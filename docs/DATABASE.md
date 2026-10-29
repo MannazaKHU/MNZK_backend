@@ -6,6 +6,7 @@ Docker 없이 직접 실행할 때는 SQLite도 사용할 수 있습니다.
 - 모델: [app/models.py](../app/models.py)
 - 초기 마이그레이션: [0001_meetings.py](../migrations/versions/0001_meetings.py)
 - 전원 응답 자동 추천: [0002_group_submissions.py](../migrations/versions/0002_group_submissions.py)
+- 백엔드 전용 테이블 RLS: [0003_backend_only_tables.py](../migrations/versions/0003_backend_only_tables.py)
 - 입력 검증: [app/schemas.py](../app/schemas.py)
 - API 사용법: [API.md](API.md)
 
@@ -295,3 +296,10 @@ python -m alembic check
 0002 마이그레이션은 기존 모임·추천 이력을 삭제하지 않습니다.
 기존 모임의 목표 인원은 실제 가입한 인원으로 설정하고, 일정 제출 여부와 출발지를 포함한 선호가 있는 참여자는 제출 완료로 이관합니다.
 새 모임은 반드시 API 생성 요청에 목표 인원을 명시해야 합니다.
+
+## 8. Supabase의 접근 경로
+
+Railway API가 PostgreSQL URI로 직접 연결합니다. 프론트는 Supabase 테이블을 직접 읽지 않고 기존 모임별 Bearer 토큰으로 API를 호출합니다.
+0003은 PostgreSQL에서 업무 테이블과 alembic_version의 RLS를 활성화하며 브라우저 역할용 허용 정책은 추가하지 않습니다.
+현재 배포는 마이그레이션으로 테이블을 생성한 DB 소유자 연결을 사용합니다. 별도 런타임 DB 역할은 추가 권한·정책 설계가 필요합니다.
+SQLite에서는 해당 마이그레이션의 RLS 작업을 생략합니다. 자세한 연결 절차는 [DEPLOYMENT.md](DEPLOYMENT.md)를 참고하세요.

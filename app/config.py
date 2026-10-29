@@ -24,6 +24,9 @@ class Settings:
         self.HOST = os.getenv("HOST", "127.0.0.1")
         self.PORT = int(os.getenv("PORT", "8000"))
         self.DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/app.sqlite3")
+        self.DB_POOL_SIZE = int(os.getenv("DB_POOL_SIZE", "5"))
+        self.DB_MAX_OVERFLOW = int(os.getenv("DB_MAX_OVERFLOW", "0"))
+        self.DB_CONNECT_TIMEOUT = int(os.getenv("DB_CONNECT_TIMEOUT", "10"))
         legacy_mock = env_bool("MOCK_MODE", True)
         self.AI_PROVIDER = os.getenv("AI_PROVIDER", "mock" if legacy_mock else "chatkhu")
         self.MAPS_PROVIDER = os.getenv("MAPS_PROVIDER", "mock" if legacy_mock else "naver")
@@ -49,6 +52,10 @@ class Settings:
     def validate(self):
         if self.APP_ENV not in {"development", "test", "production"}:
             raise ValueError("APP_ENV must be development, test or production")
+        if self.APP_ENV == "production" and not self.DATABASE_URL.startswith(("postgres://", "postgresql://", "postgresql+psycopg://")):
+            raise ValueError("Production requires a PostgreSQL DATABASE_URL")
+        if self.DB_POOL_SIZE < 1 or self.DB_MAX_OVERFLOW < 0 or self.DB_CONNECT_TIMEOUT < 1:
+            raise ValueError("Invalid database pool/timeout configuration")
         if self.AI_PROVIDER not in {"mock", "chatkhu"}:
             raise ValueError("AI_PROVIDER must be mock or chatkhu")
         if self.MAPS_PROVIDER not in {"mock", "naver"}:

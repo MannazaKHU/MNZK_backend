@@ -2,6 +2,8 @@ MNZK_backend/
 ├── .env.example           # 실행 설정 예시 (.env는 Git 제외)
 ├── compose.yaml           # 로컬 FastAPI + PostgreSQL
 ├── compose.dev.yaml       # 개발용 소스 마운트·자동 재시작
+├── compose.supabase.yaml  # 로컬 API의 DB를 .env Supabase로 전환
+├── railway.json           # Supabase 연결 Railway 배포 설정
 ├── .vscode/               # 프로젝트 Python·pytest 설정
 ├── Dockerfile
 ├── requirements.txt
@@ -33,9 +35,11 @@ MNZK_backend/
 │   ├── setup_env.py       # .env 최초 생성
 │   ├── start.sh
 │   ├── start.ps1
-│   └── smoke_test.py      # 명시적으로 실행하는 실제 Gateway 점검
+│   ├── smoke_test.py      # 명시적으로 실행하는 실제 Gateway 점검
+│   └── check_database.py  # DB 연결·대상 프로젝트·마이그레이션 점검
 ├── tests/
 └── docs/
     ├── API.md             # 전원 응답 자동 추천 API
     ├── DATABASE.md        # 테이블·필드 명세
-    └── FRONTEND_REVIEW.md # 입력 항목·API 연결 관계
+    ├── FRONTEND_REVIEW.md # 입력 항목·API 연결 관계
+    └── DEPLOYMENT.md      # Supabase·Railway·공개 프론트 연결

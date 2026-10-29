@@ -1,0 +1,5 @@
+# Append after compose.yaml / compose.dev.yaml to use .env DATABASE_URL instead of local DB.
+services:
+  api:
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set the Supabase PostgreSQL URI in .env first}

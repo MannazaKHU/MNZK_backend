@@ -8,6 +8,20 @@
 - AI는 ChatKHU Gateway, 지도는 NAVER API HUB / NCP Maps를 사용합니다.
 - AI·지도는 각각 MOCK 모드로 실행할 수 있으며 기본값은 모두 MOCK입니다.
 
+## 공개 배포: Supabase + Railway
+
+공개 웹 → Railway API → Supabase PostgreSQL 구성으로 배포합니다.
+Supabase 프로젝트 URL이 아닌 PostgreSQL 연결 URI를 `DATABASE_URL`로 사용합니다.
+Railway 빌드·마이그레이션·시작·헬스체크 설정은 `railway.json`에 포함되어 있습니다.
+연결 점검과 설정 순서는 [배포 가이드](docs/DEPLOYMENT.md)를 참고하세요.
+실제 클라우드 계정 연결과 공개 배포 완료 여부는 별도 확인이 필요합니다.
+
+로컬 Docker API를 Supabase에 연결할 때는 `.env`의 DB URI 설정 후 다음 명령을 사용합니다.
+
+```sh
+docker compose -f compose.yaml -f compose.dev.yaml -f compose.supabase.yaml up -d --build --wait api
+```
+
 ## 개발 환경
 
 IDE에서는 `MNZK_backend` 폴더 자체를 여세요. 프로젝트의 `.venv`를 Python 인터프리터로 사용합니다.
@@ -79,7 +93,7 @@ docker compose down
 
 `down` 후에도 PostgreSQL 데이터는 `meetflow_postgres_data` 볼륨에 유지됩니다.
 `docker compose down -v`는 데이터를 삭제하므로 일반 종료에 사용하지 마세요.
-이 구성은 로컬 개발용이며 외부 서버 배포는 아직 포함하지 않습니다.
+이 Compose 구성은 로컬 개발용입니다. 외부 배포는 `railway.json`과 [배포 가이드](docs/DEPLOYMENT.md)를 사용합니다.
 
 ## Docker 없이 빠르게 실행: SQLite
 
@@ -192,6 +206,7 @@ docker compose exec api python -m scripts.smoke_test --completion
 | `APP_ENV` | development / test / production | development |
 | `HOST`, `PORT` | 직접 실행 시 서버 주소 | 127.0.0.1, 8000 |
 | `DATABASE_URL` | SQLAlchemy DB 연결 문자열 | sqlite:///./data/app.sqlite3 |
+| `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_CONNECT_TIMEOUT` | PostgreSQL 연결 풀·추가 연결·접속 제한(초) | 5, 0, 10 |
 | `POSTGRES_PASSWORD` | Compose DB 비밀번호 | setup_env.py가 생성 |
 | `CORS_ORIGINS` | 허용 프론트 주소, 쉼표 구분 | localhost:5173, localhost:3000 |
 | `AI_PROVIDER` | mock / chatkhu | mock |
