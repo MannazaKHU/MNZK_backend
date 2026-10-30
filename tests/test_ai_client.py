@@ -54,6 +54,23 @@ def test_invalid_ai_output_is_controlled_error(monkeypatch, content):
     assert error.value.status_code == 502
 
 
+def test_invalid_structured_output_is_retried_once(monkeypatch):
+    calls = 0
+    def handler(request):
+        nonlocal calls
+        calls += 1
+        content = '{"ok": "yes"}' if calls == 1 else '{"ok": true}'
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": content}, "finish_reason": "stop"}],
+        })
+    configure(monkeypatch, handler)
+
+    result = asyncio.run(ai.structured("system", "long user preference", SCHEMA, step="test"))
+
+    assert result == {"ok": True}
+    assert calls == 2
+
+
 @pytest.mark.parametrize("response", [
     httpx.Response(401, text="secret test-key"),
     httpx.Response(200, json={"choices": []}),

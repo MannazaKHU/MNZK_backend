@@ -79,15 +79,19 @@ async def chat(system: str, user: str, step: str) -> str:
 
 async def structured(system: str, user: str, schema: dict, step: str) -> dict:
     schema = strict_schema(schema)
-    content = await _post({
+    payload = {
         "messages": _messages(system, user), "max_tokens": settings.AI_MAX_TOKENS,
         "response_format": {"type": "json_schema", "json_schema": {
             "name": step, "strict": True, "schema": schema,
         }},
-    }, step)
-    try:
-        result = json.loads(content)
-        Draft202012Validator(schema).validate(result)
-    except (ValueError, ValidationError):
-        raise ApiError(502, "AI_ERROR", "AI 응답 형식이 올바르지 않아요. 다시 시도해 주세요.")
-    return result
+    }
+    for attempt in range(2):
+        content = await _post(payload, step)
+        try:
+            result = json.loads(content)
+            Draft202012Validator(schema).validate(result)
+            return result
+        except (ValueError, ValidationError):
+            logger.warning("ChatKHU returned invalid structured output at step %s (attempt %s)",
+                           step, attempt + 1)
+    raise ApiError(502, "AI_ERROR", "AI 응답 형식이 올바르지 않아요. 다시 시도해 주세요.")
