@@ -37,76 +37,64 @@ def present_candidate(row):
     row['score_display'] = percent(row['score'])
     row['score_label'] = '종합 추천 점수'
     row['score_description'] = '평가 기준을 가중 합산한 100점 만점 점수이며 만족 확률이 아닙니다.'
-    details = []
-    for e in row['condition_evaluations']:
-        state = e.get('assessment_status', e['status'])
-        details.append({'condition_id': e['id'], 'member_id': e['member_id'],
-                        'direction': e['direction'], 'direction_label': DIRECTIONS[e['direction']],
-                        'category': e['category'], 'category_label': CATEGORIES[e['category']],
-                        'label': condition_label(e), 'strength': e['strength'],
-                        'strength_label': '필수' if e['strength'] == 'required' else '희망',
-                        'status': state, 'status_label': STATUS_LABELS[state],
-                        'evidence_level': e['evidence_level'], 'evidence': e['evidence'], 'sources': e['sources']})
-    # Avoidance stays in condition_evaluations for scoring, but is not user-facing copy.
-    details = [d for d in details if d['direction'] == 'preference']
-    row['condition_details'] = details
-    row['condition_groups'] = [
-        {'direction': direction, 'label': direction_label, 'categories': [
-            {'category': category, 'label': label,
-             'conditions': [d for d in details if d['direction'] == direction and d['category'] == category]}
-            for category, label in CATEGORIES.items()]}
-        for direction, direction_label in DIRECTIONS.items() if direction == 'preference']
     row['score_breakdown'] = [
         {'key': key, 'label': label, 'score_display': percent(row['raw_scores'][key]) if key in row['weights'] else '입력 없음',
          'weight_percent': rounded(row['weights'].get(key, 0)*100, 1), 'active': key in row['weights']}
         for key, label in [('D', '이동 편의'), ('P', '선호 조건 만족'), ('N', '조건 적합성')]]
-    sentences = []
-    for direction in ('preference',):
-        positives = [d for d in details if d['direction'] == direction and d['status'] == 'satisfied']
-        estimates = [d for d in details if d['direction'] == direction and d['status'] == 'estimated_support']
-        negative = [d for d in details if d['direction'] == direction and d['status'] in {'unsatisfied', 'estimated_conflict'}]
-        if positives:
-            labels = ', '.join(dict.fromkeys(d['label'] for d in positives[:2]))
-            sentences.append(f"{DIRECTIONS[direction]} 중 ‘{labels}’의 {'회피 가능 여부' if direction == 'avoidance' else '충족 여부'}가 확인됐어요.")
-        if estimates:
-            labels = ', '.join(dict.fromkeys(d['label'] for d in estimates[:2]))
-            fixture = any(e.get('data_origin') == 'fixture' for ev in row['condition_evaluations'] for e in ev.get('review_evidence', []) if e.get('applied'))
-            sentences.append(f"{'모의 후기 자료' if fixture else '제공된 후기'}에 ‘{labels}’ 조건을 지지하는 언급이 있어요. 직접 확인된 정보는 아니에요.")
-        if negative:
-            labels = ', '.join(dict.fromkeys(d['label'] for d in negative[:2]))
-            sentences.append(f"‘{labels}’ 조건은 충족하지 못하거나 후기에서 충돌하는 언급이 있어 확인이 필요해요.")
     row['travel'] = [present_travel(t) for t in row.get('travel', [])]
     row['travel_text'] = [t.get('text', '') for t in row['travel']]
     travel = row['travel_summary']
-    for field in ('average_minutes', 'maximum_minutes'):
+    badges = []
+    for field, label in (('average_minutes', '평균'), ('maximum_minutes', '최대')):
         value = travel.get(field)
-        travel[field + '_display'] = None if value is None else f'{rounded(value, 1):g}분'
-    if travel['score'] is not None:
-        sentences.append(f"자동차 이동시간은 평균 {rounded(travel['average_minutes'], 1):g}분, 가장 먼 참여자는 {rounded(travel['maximum_minutes'], 1):g}분이에요.")
-    else:
-        sentences.append('참여자 전원의 지원 가능한 이동시간이 확보되지 않아 종합 점수와 순위를 계산하지 못했어요.')
-    unknown = [d for d in details if d['status'] == 'unknown']
-    if unknown:
-        labels = ', '.join(dict.fromkeys(d['label'] for d in unknown[:2]))
-        sentences.append(f"‘{labels}’ 등 {len(unknown)}개 조건은 정보가 부족해 확인이 필요해요.")
-    if row['eligibility'] == 'needs_verification':
-        sentences.append('필수 조건이 확인되지 않아 일반 추천 순위에서 보류했어요.')
-    elif row['eligibility'] == 'excluded':
-        sentences.append('필수 조건 위반이 확인되어 일반 추천 순위에서 제외했어요.')
-    row['reason'] = ' '.join(sentences)
+        display = None if value is None else f'{rounded(value, 1):g}분'
+        travel[field + '_display'] = display
+        if display is not None:
+            badges.append({'label': label, 'value': display, 'text': f'{label} {display}'})
+    tags = public_reason_tags(row['condition_evaluations'])
+    row['reason_tags'] = tags
+    row['travel_badges'] = badges
+    # Compatibility field: short labels only, never user prose, unknown conditions or comparisons.
+    row['reason'] = '\n'.join(tags)
+    row['recommendation_card'] = {'reason_tags': tags, 'show_reasons': bool(tags),
+                                  'travel_badges': badges, 'score_display': row['score_display']}
+    # Display fields must not contain condition originals, participant IDs or unmet requests.
+    row['condition_details'] = []
+    row['condition_groups'] = []
+
+
+PUBLIC_FEATURE_TAGS = {
+    ('atmosphere', '조용한'): '조용한 분위기',
+    ('atmosphere', '조용'): '조용한 분위기',
+    ('atmosphere', '대화하기 좋은'): '대화하기 좋음',
+    ('environment', '대화하기 좋은'): '대화하기 좋음',
+    ('environment', '넓은'): '넓은 공간',
+    ('environment', 'indoor'): '실내 공간',
+    ('environment', 'outdoor'): '야외 공간',
+    ('accessibility', 'parking'): '주차 가능',
+    ('accessibility', 'free_parking'): '무료 주차',
+    ('accessibility', '역 가까움'): '역에서 가까움',
+    ('accessibility', '역에서 가까운'): '역에서 가까움',
+}
+
+
+def public_reason_tags(evaluations):
+    tags = []
+    for e in evaluations:
+        # Only confirmed place attributes are safe for unqualified green feature chips.
+        # Do not turn an OR evaluation into a claim that a particular alternative is true.
+        if (e['direction'] != 'preference' or e['scope'] != 'place' or e['alternatives']
+                or e['status'] != 'satisfied' or e['evidence_level'] != 'confirmed'):
+            continue
+        label = PUBLIC_FEATURE_TAGS.get((e['category'], e['target']))
+        if label and label not in tags:
+            tags.append(label)
+    return tags[:3]
 
 
 def present_comparison(first, second):
-    delta = first['comparison']['total_delta']
-    if abs(delta) < .1:
-        summary = ('2순위와 종합 점수 차이가 0.1점 미만으로 매우 비슷해요.' if delta > 0 else
-                   '종합 점수가 같아 미확인 조건 수와 최대 이동시간 등의 기준으로 순위를 정했어요.')
-    else:
-        advantages = [label for key, label in [('D', '이동 편의'), ('P', '선호 조건 만족'), ('N', '조건 적합성')]
-                      if first['comparison']['contribution_deltas'].get(key, 0) > 0]
-        summary = f"2순위보다 {'·'.join(advantages)}에서 유리해 종합 점수가 {rounded(delta, 1):g}점 높아요."
-    first['comparison']['summary'] = summary
-    first['reason'] += ' ' + summary
+    # Detailed arithmetic remains available; comparisons never enter the public feature chips.
+    first['comparison'].pop('summary', None)
 
 
 def present_saved_result(result):
@@ -119,6 +107,13 @@ def present_saved_result(result):
         for row in projected.get(collection, []):
             row['travel'] = [present_travel(t) for t in row.get('travel', [])]
             row['travel_text'] = [t.get('text', '') for t in row['travel']]
+            # Older records without structured evaluations must not retain stale private prose.
+            row['reason'] = ''
+            row['reason_tags'] = []
+            row['condition_details'] = []
+            row['condition_groups'] = []
+            row['recommendation_card'] = {'reason_tags': [], 'show_reasons': False, 'travel_badges': [],
+                                           'score_display': percent(row.get('score'))}
             if all(key in row for key in ('condition_evaluations', 'travel_summary', 'raw_scores', 'weights', 'eligibility')):
                 present_candidate(row)
     recommendations = projected.get('recommendations', [])

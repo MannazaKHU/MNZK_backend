@@ -1,92 +1,95 @@
-﻿import pytest
+﻿"""Public card presentation must never echo participant requirements."""
+from copy import deepcopy
+import json
+import pytest
 from app.services.recommendation_rules import normalize, score_candidates
+from app.services.recommendation_presentation import present_saved_result
 
 
 def travel(minutes):
-    return [{'driving_minutes': minutes, 'mode': 'driving'}]
+    return [{'driving_minutes':minutes,'mode':'driving'}]
 
 
-def test_tiny_score_gap_is_readable_and_does_not_change_ranking():
-    ranked, _ = score_candidates([], [{'id':'b'}, {'id':'a'}], {'a':travel(12), 'b':travel(12.02202)})
-    assert [r['place_id'] for r in ranked] == ['a','b']
-    assert ranked[0]['score_display'] == '80%'
-    assert ranked[0]['score_percent'] == 80
-    assert '0.1점 미만' in ranked[0]['reason']
-    assert '반올림 전' not in ranked[0]['reason']
-    assert "'D':" not in ranked[0]['reason']
-    assert '자동차 이동시간' in ranked[0]['reason']
-    assert ranked[0]['comparison']['total_delta'] > 0
+def test_public_card_matches_tag_and_badge_layout():
+    conditions=normalize([
+        dict(category='atmosphere',target='조용한',raw_text='비밀 입력 원문'),
+        dict(category='atmosphere',target='대화하기 좋은',raw_text='우리끼리 이야기'),
+        dict(category='accessibility',target='역 가까움',raw_text='원문'),
+    ],'private-member')
+    place={'id':'p','facts':[dict(scope='place',target=c['target'],value=True,source='fixture') for c in conditions]}
+    row=score_candidates(conditions,[place],{'p':travel(18)})[0][0]
+    assert row['reason_tags']==['조용한 분위기','대화하기 좋음','역에서 가까움']
+    assert row['reason']=='조용한 분위기\n대화하기 좋음\n역에서 가까움'
+    assert row['travel_badges']==[{'label':'평균','value':'18분','text':'평균 18분'},{'label':'최대','value':'18분','text':'최대 18분'}]
+    public=json.dumps(row['recommendation_card'],ensure_ascii=False)
+    assert '비밀' not in public and 'private-member' not in public
+    assert row['condition_details']==[] and row['condition_groups']==[]
 
 
-def test_condition_categories_and_evidence_appear_without_inventing_facts():
-    conditions = normalize([
-        dict(category='atmosphere', target='조용한', raw_text='조용한 곳'),
-        dict(category='accessibility', target='parking', direction='avoidance', raw_text='주차 불편한 곳 싫어'),
-    ], 'a')
-    ranked, _ = score_candidates(conditions, [{'id':'p','facts':[dict(target='조용한',scope='place',value=True,source='fixture:verified')]}], {'p':travel(12)})
-    r=ranked[0]
-    assert '조용한' in r['reason'] and '확인됐어요' in r['reason']
-    assert '주차 가능' not in r['reason']
-    assert '주차 불편' not in r['reason']
-    assert [g['label'] for g in r['condition_groups']] == ['선호 조건']
-    assert all(len(g['categories']) == 6 for g in r['condition_groups'])
-    assert [c['label'] for c in r['condition_groups'][0]['categories']] == ['음식·활동·장소 종류','비용','분위기','공간·환경','편의·접근성','기타']
-    assert len(r['condition_details']) == 1
-    assert len(r['condition_evaluations']) == 2
-    assert r['score_description'].endswith('만족 확률이 아닙니다.')
+def test_unknown_and_avoidance_do_not_echo_private_conditions():
+    conditions=normalize([
+        dict(category='other',target='비밀표적',raw_text='공개하면 안 되는 개인정보'),
+        dict(category='atmosphere',target='조용한',raw_text='조용한 곳'),
+        dict(category='kind',target='술집',direction='avoidance',raw_text='비밀 사유'),
+    ],'secret-member')
+    row=score_candidates(conditions,[{'id':'p'}],{'p':travel(10.4)})[0][0]
+    assert row['reason']=='' and row['reason_tags']==[]
+    assert not row['recommendation_card']['show_reasons']
+    assert '확인' not in json.dumps(row['recommendation_card'],ensure_ascii=False)
+    assert len(row['condition_evaluations'])==3
+    assert row['unknown_condition_count']==3
 
 
-def test_unavailable_score_is_never_shown_as_zero_percent():
-    _, rows=score_candidates([], [{'id':'p'}], {'p':[{'driving_minutes':None}]})
-    assert rows[0]['score_display']=='산정 불가'
-    assert rows[0]['score_percent'] is None
-    assert '계산하지 못했어요' in rows[0]['reason']
+def test_review_estimates_do_not_become_confirmed_green_chips():
+    c=normalize([dict(category='atmosphere',target='조용한',raw_text='secret')],'a')
+    p={'id':'p','blog_evidence':[dict(condition_id=c[0]['id'],target='조용한',url='https://fixture.invalid',
+                                      usable=True,relation='supports',unused_reasons=[],data_origin='fixture')]}
+    row=score_candidates(c,[p],{'p':travel(12)})[0][0]
+    assert row['raw_scores']['P']==75
+    assert row['reason_tags']==[]
 
 
-def test_display_rounding_and_raw_contributions_remain_separate():
-    ranked, _ = score_candidates([], [{'id':'p'}], {'p':travel(12.3)})
-    r=ranked[0]
-    assert r['score']==pytest.approx(79.5)
-    assert r['score_display']=='80%'
-    assert sum(r['contributions'].values())==r['score']
-    assert r['score_breakdown'][1]['score_display']=='입력 없음'
-
-
-def test_saved_result_projection_removes_old_copy_without_mutating_stored_data():
-    from copy import deepcopy
-    from app.services.recommendation_presentation import present_saved_result
-    ranked, candidates = score_candidates([], [{'id':'a'}, {'id':'b'}], {'a':travel(12),'b':travel(12.02202)})
-    ranked[0]['reason']="2순위 대비 항목별 기여분 차이: {'D':0.036699999999}. 총점 차이: 0.036700000002점 (반올림 전)."
-    stored={'recommendations':ranked,'candidate_evaluations':candidates}
-    original=deepcopy(stored)
-    display=present_saved_result(stored)
-    assert stored==original
-    assert "'D':" not in display['recommendations'][0]['reason']
-    assert display['recommendations'][0]['score']==stored['recommendations'][0]['score']
-    assert display['recommendations'][0]['score_display']=='80%'
-
-
-def test_travel_display_rounds_without_changing_score_or_source():
-    from app.services.recommendation_presentation import present_saved_result
-    raw=59.26083333333333
-    source={'p':[{'driving_minutes':raw,'duration':raw,'unit':'minutes','mode':'driving',
-                  'text':f'서울에서 직선 18.6km · 도로 18.9km - 자동차 약 {raw}분'}]}
-    ranked,_=score_candidates([], [{'id':'p'}], source)
-    r=ranked[0]
-    assert r['travel'][0]['driving_minutes']==59.3
-    assert r['travel'][0]['driving_minutes_display']=='59.3분'
-    assert '59.3분' in r['travel_text'][0]
-    assert '333333' not in r['travel_text'][0]
-    assert r['score']==pytest.approx(100*(1-raw/60))
+def test_display_rounds_but_preserves_precision_and_ranking():
+    raw=59.2608333333333
+    source={'p':[{'duration':raw,'unit':'minutes','driving_minutes':raw,'mode':'driving','text':f'자동차 약 {raw}분'}]}
+    row=score_candidates([],[{'id':'p'}],source)[0][0]
+    assert row['travel'][0]['driving_minutes']==59.3
+    assert row['travel_text']==['자동차 약 59.3분']
+    assert row['score']==pytest.approx(100*(1-raw/60))
+    assert row['travel_badges'][0]['text']=='평균 59.3분'
     assert source['p'][0]['driving_minutes']==raw
-    assert r['travel'][0]['duration']==raw
-    assert present_saved_result({'recommendations':[r]})['recommendations'][0]['travel'][0]['driving_minutes']==59.3
+    assert row['score_display'].endswith('%')
 
 
-def test_avoidance_is_not_displayed_but_still_scored():
-    c=normalize([dict(category='kind',target='술집',direction='avoidance',scope='place',raw_text='술집 싫어')],'a')
-    r=score_candidates(c,[{'id':'p','facts':[dict(target='술집',scope='place',value=True,source='fixture')]}],{'p':travel(12)})[0][0]
-    assert r['raw_scores']['N']==0
-    assert '술집' not in r['reason'] and '비선호' not in r['reason']
-    assert r['condition_details']==[]
-    assert r['condition_evaluations'][0]['target']=='술집'
+def test_comparison_never_turns_into_paragraph_or_discloses_unknown_count():
+    ranked,_=score_candidates([],[{'id':'a'},{'id':'b'}],{'a':travel(12),'b':travel(12.02202)})
+    assert ranked[0]['reason']==''
+    assert ranked[0]['comparison']['total_delta']>0
+    assert 'summary' not in ranked[0]['comparison']
+
+
+def test_saved_results_reproject_without_db_writes():
+    ranked,rows=score_candidates([],[{'id':'a'},{'id':'b'}],{'a':travel(12),'b':travel(13)})
+    ranked[0]['reason']='비밀 조건은 정보가 부족해 확인이 필요해요. 2순위와 비슷해요.'
+    ranked[0]['comparison']['summary']='비밀 비교'
+    stored={'recommendations':ranked,'candidate_evaluations':rows}
+    original=deepcopy(stored)
+    projected=present_saved_result(stored)
+    assert stored==original
+    assert projected['recommendations'][0]['reason']==''
+    assert 'summary' not in projected['recommendations'][0]['comparison']
+
+
+def test_missing_times_have_no_invented_badges():
+    row=score_candidates([],[{'id':'p'}],{'p':[{'driving_minutes':None}]})[1][0]
+    assert row['travel_badges']==[]
+    assert row['reason']==''
+    assert row['score_display']=='산정 불가'
+
+
+def test_legacy_record_without_evaluations_does_not_leak_old_paragraph():
+    stored={'recommendations':[{'score':80,'reason':'비밀 조건 확인 필요','condition_details':[{'label':'비밀'}]}]}
+    row=present_saved_result(stored)['recommendations'][0]
+    assert row['reason']=='' and row['condition_details']==[]
+    assert row['recommendation_card']['show_reasons'] is False
+    assert stored['recommendations'][0]['reason']=='비밀 조건 확인 필요'
