@@ -7,6 +7,7 @@ from statistics import mean
 from datetime import datetime, timezone
 from app.conditions import Condition
 from app.services.blog_evidence import apply_reviews
+from app.services.recommendation_presentation import present_candidate, present_comparison
 
 @dataclass(frozen=True)
 class Policy:
@@ -174,12 +175,14 @@ def score_candidates(conditions, candidates, travels, policy=POLICY):
                         'reason':'확보한 정보와 추천 정책으로 계산한 결과입니다.','matched':[e['target'] for e in ev if e['status']=='satisfied'],
                         'blog_enrichment':place.get('blog_enrichment', {}),
                         'warnings':['영업시간·예약 가능 여부는 확인이 필요합니다.', '일부 후보의 검색된 후기 범위에서 평가하며 전체 후보 중 절대 최적을 보장하지 않습니다.'], 'travel_text':[t.get('text','') for t in travel]})
+    for row in results:
+        present_candidate(row)
     ranked = sorted((r for r in results if r['eligibility']=='eligible' and r['score'] is not None), key=lambda r:(-r['score'],r['unknown_condition_count'],r['travel_summary']['maximum_minutes'],str(r['place_id'])))
     for i,r in enumerate(ranked,1): r['rank']=i
     if len(ranked)>1:
         a,b=ranked[:2]
         delta={k:a['contributions'][k]-b['contributions'][k] for k in a['contributions']}
         a['comparison']={'place_id':b['place_id'],'contribution_deltas':delta,'total_delta':a['score']-b['score']}
-        a['reason']=f"2순위 대비 항목별 기여분 차이: {delta}. 총점 차이: {a['score']-b['score']!r}점 (반올림 전)."
+        present_comparison(a, b)
     return ranked, results
 

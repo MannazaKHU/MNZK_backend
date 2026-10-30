@@ -40,7 +40,7 @@ def _travel(name: str, loc, place: dict, route) -> dict:
     km = round(haversine_km(loc["lat"], loc["lng"], place["lat"], place["lng"]), 1)
     origin = f"{loc['text']}({name})"
     if route:
-        text = f"{origin}에서 직선 {km}km · 도로 {route['distance_km']}km - 자동차 약 {route['minutes']}분"
+        text = f"{origin}에서 직선 {km}km · 도로 {route['distance_km']:.1f}km - 자동차 약 {route['minutes']:.1f}분"
     else:
         text = f"{origin}에서 직선 {km}km - 자동차 경로 없음"
     return {"member": name, "from": loc["text"], "straight_km": km,
@@ -127,6 +127,8 @@ async def recommend(people: list, count: int, radius_m: int, extra_text: str = "
     result = await evaluate_supplied_inputs(inputs, conditions, schedule, extractor=evidence_extractor)
     result['recommendations'] = result['recommendations'][:count]
     return {**result, 'schedule': schedule, 'center': center, 'group_summary': rule_summary(merged),
+            'search_conditions': {'label': '검색 조건', 'queries': queries, 'center_name': center.get('name'),
+                                  'radius_m': radius_m, 'extra_text': extra_text},
             'search_queries': queries, 'candidate_count': len(places), 'fallback': False,
             'travel_mode': 'driving',
             'travel_source': 'mock_estimate' if settings.MAPS_PROVIDER == 'mock' else 'naver.directions5'}

@@ -77,7 +77,8 @@ def commit(session: Session, meeting: Meeting):
 
 
 def snapshot(meeting: Meeting, *, host=False):
-    result = meeting.recommendation_result
+    from app.services.recommendation_presentation import present_saved_result
+    result = present_saved_result(meeting.recommendation_result)
     created_at = meeting.created_at
     if created_at.tzinfo is None:
         created_at = created_at.replace(tzinfo=timezone.utc)
