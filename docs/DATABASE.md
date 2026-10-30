@@ -40,9 +40,9 @@ alembic_version (DB 스키마 버전 관리)
 | `expected_member_count` | INTEGER | 아니요 | API 필수, DB fallback `1` | 방장 포함 목표 인원, API에서 1~10 허용 |
 | `recommendation_options` | JSON | 아니요 | DB·API 기본값: count 5, radius_m 1000, extra_text 빈 문자열 | 전원 제출 후 사용할 추천 옵션 |
 | `invite_code` | VARCHAR(64) | 아니요 | 무작위 URL-safe 문자열 | UNIQUE, 참여용 초대 코드 |
-| `candidate_dates` | JSON | 아니요 | API 기본값: 한국 날짜 기준 오늘부터 7일 | 후보 날짜 배열 |
-| `time_range` | JSON | 아니요 | API 기본값: 10:00~23:00 | 선택할 수 있는 시간 범위 |
-| `slot_minutes` | INTEGER | 아니요 | API 기본값 `60` | 슬롯 간격. API에서 30 또는 60만 허용 |
+| `candidate_dates` | JSON | 아니요 | 새 모임 기본 `[]` | 빈 배열은 자유 날짜 모드, 명시한 비어 있지 않은 배열은 fixed 모드 |
+| `time_range` | JSON | 아니요 | 새 모임 기본 06:00~24:00 | 선택할 수 있는 시간 범위. 24:00은 종료만 허용 |
+| `slot_minutes` | INTEGER | 아니요 | 새 모임 기본 `30` | 슬롯 간격. API에서 30 또는 60만 허용 |
 | `status` | VARCHAR(20) | 아니요 | `waiting` | 진행 상태 |
 | `processing_started_at` | TIMESTAMPTZ | 예 | 없음 | 자동 추천 처리 시작, 10분 초과 시 재요청으로 재처리 가능 |
 | `processing_error` | JSON | 예 | 없음 | 실패 code·message |
@@ -81,6 +81,12 @@ GET 모임 응답의 progress는 저장 열이 아니라 다음 값을 계산한
 외부 API 실패 시 제출한 응답은 보존하고 processing_error를 저장해 재시도할 수 있습니다.
 
 ### candidate_dates / time_range / confirmed
+
+저장된 candidate_dates가 빈 배열인 자유 날짜 모임은 API 응답에서 `date_selection_mode: free`를 반환하고,
+응답의 candidate_dates를 현재 참여자들의 availability에 있는 날짜 합집합으로 계산합니다.
+공통 시간 계산도 이 합집합을 사용합니다. 따라서 다른 참가자가 선택한 날짜만으로 입력을 제한하지 않습니다.
+저장된 비어 있지 않은 배열은 fixed 모임이며 기존 날짜 범위를 유지합니다. DB 컬럼 추가·마이그레이션은 필요 없습니다.
+아래는 기존 fixed 모임의 예시입니다.
 
 ```json
 {

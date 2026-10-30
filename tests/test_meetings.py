@@ -15,6 +15,7 @@ def create_group(client, size, joined=None):
     response = client.post("/api/meetings", json={
         "expected_member_count": size, "host_name": "방장",
         "candidate_dates": [DAY], "time_range": {"start": "10:00", "end": "14:00"},
+        "slot_minutes": 60,
     })
     assert response.status_code == 201, response.text
     host = response.json()

@@ -52,16 +52,15 @@ def run_flow(client, *, members=2, emit=print):
     require(request(client, "GET", "/health").get("ok"), "서버 상태를 확인해 주세요.")
     require(request(client, "GET", "/health/ready").get("database") == "ready", "DB 준비 상태를 확인해 주세요.")
     now = datetime.now(ZoneInfo("Asia/Seoul"))
-    day = (now + timedelta(days=1)).date().isoformat()
+    day = (now + timedelta(days=30)).date().isoformat()
     host = request(client, "POST", "/api/meetings", expected=201, payload={
         "title": f"API 테스트 {now:%m%d-%H%M%S}", "host_name": "테스트방장",
-        "expected_member_count": members, "candidate_dates": [day],
-        "time_range": {"start": "18:00", "end": "21:00"}, "slot_minutes": 60,
-        "recommendation_options": {"count": 3, "radius_m": 1500, "extra_text": ""},
+        "expected_member_count": members,
     })
     meeting_id = host["meeting"]["id"]
     path = "/api/meetings/" + meeting_id
     emit(f"모임 생성: OK (meeting_id={meeting_id})")
+    require(host["meeting"].get("date_selection_mode") == "free", "자유 날짜 모임이 아니에요. 최신 API 배포를 확인해 주세요.")
     people = [host]
     for index in range(1, members):
         people.append(request(client, "POST", path + "/members", expected=201,
@@ -72,7 +71,7 @@ def run_flow(client, *, members=2, emit=print):
         origin = (dict(text="강남역", lat=37.4979, lng=127.0276) if index % 2 else
                   dict(text="역삼역", lat=37.5006, lng=127.0365))
         meeting = request(client, "PUT", path + "/members/me/submission", token=person["access_token"], payload={
-            "availability": {day: ["18:00", "19:00"]}, "start_location": origin,
+            "availability": {day: ["18:00", "18:30", "19:00", "19:30"]}, "start_location": origin,
             "desired_text": "조용한 카페", "avoided_text": "",
         })
         progress = meeting["progress"]

@@ -1,6 +1,6 @@
 # 프론트 입력과 전원 응답 자동 추천
 
-검토 기준: `만나자쿠 연두.html`은 버튼·입력 항목 참고용입니다.
+검토 기준: 제공된 스크린샷과 `만나자쿠 html v1.html`의 버튼·입력 순서를 참고합니다.
 목업의 통신 코드·샘플 값·화면 완성도를 구현 요구사항으로 판단하지 않습니다.
 
 ## 프론트 접속 주소
@@ -16,7 +16,7 @@ Railway Variables 적용 방법은 [배포 가이드](DEPLOYMENT.md#6-프론트-
 ## 확정한 흐름
 
 1. 방장이 그룹 생성 시 방장 포함 총 인원 N명을 지정합니다.
-2. 각 참가자가 가능한 날짜·시간과 출발지·선호·비선호를 함께 입력합니다.
+2. 각 참가자가 달력에서 날짜를 자유롭게 고르고, 선택 날짜의 30분 시간 칸을 칠한 뒤 출발지·선호·비선호와 함께 제출합니다.
 3. 서로 다른 참가자의 완료 응답이 N명 미만이면 대기 상태입니다.
 4. N명 전원이 제출하면 백엔드가 공통 시간·추천 장소를 자동으로 계산합니다.
 5. 프론트는 GET으로 상태를 조회해 대기·처리·추천 결과 화면을 표시합니다.
@@ -30,7 +30,7 @@ Railway Variables 적용 방법은 [배포 가이드](DEPLOYMENT.md#6-프론트-
 
 | 프론트 동작 | API·서버 역할 |
 |---|---|
-| 그룹 인원·후보 조건 설정 | POST /api/meetings |
+| 그룹명·방장 이름·총 인원 입력 | POST /api/meetings (title, host_name, expected_member_count) |
 | 초대 코드로 참여 | POST /api/meetings/{id}/members, 현재는 모임 ID·이름도 필요 |
 | 날짜·시간·출발지·선호·비선호 함께 제출 | PUT /api/meetings/{id}/members/me/submission |
 | N명 중 제출 완료·남은 인원 표시 | GET /api/meetings/{id}의 progress |
@@ -59,14 +59,40 @@ Railway Variables 적용 방법은 [배포 가이드](DEPLOYMENT.md#6-프론트-
 ## 전송 계약
 
 - 생성 인원: expected_member_count 필수
-- 슬롯: API는 30분 또는 60분을 지원. 30분을 쓰려면 slot_minutes: 30
-- 날짜·시간: YYYY-MM-DD, HH:MM. 종료 24:00은 현재 지원하지 않음
+- 생성 화면은 title, host_name, expected_member_count만 전송. candidate_dates·time_range·slot_minutes·recommendation_options는 선택 설정
+- 날짜 모드는 기본 free. 과거 날짜를 제외하고 달력에서 자유롭게 선택하며 생성 시 날짜를 보내지 않음
+- free 모임의 candidate_dates는 이미 제출된 가능 날짜 합집합. 최초 빈 배열이어도 달력 선택은 가능
+- 시간 기본값은 HTML의 T0=12, T1=48에 맞춘 06:00~24:00, 30분. 기존 60분 모임은 그대로 지원
+- 날짜·시간: YYYY-MM-DD, HH:MM. 24:00은 종료만 가능하고 23:30이 마지막 슬롯 시작
+- 선택 날짜는 최종 availability의 키, 칠한 시간은 HH:MM 배열로 변환. 현재 제출 날짜 상한은 참여자당 14개
 - 최종 제출: availability, desired_text, avoided_text, 출발지 이름 또는 좌표
 - 가입·응답·결과 상태를 복원하려면 모임 ID와 본인 토큰 사용
 - 결과 자동 전환은 GET 주기적 조회로 구현. 현재 WebSocket·이벤트 푸시 없음
 - 마지막 제출자는 처리 완료까지 요청 응답을 기다림. 다른 참가자는 GET으로 processing 확인
 - 동일 응답 재전송은 카운트·AI 호출을 중복 증가시키지 않음
 - 응답 수정 시 이전 추천·최종 장소를 해제하고 전원 제출 상태면 자동 재처리
+
+### HTML 상태를 API에 매핑
+
+`state.me.dates`는 날짜 키 목록이고 `state.me.slots[date]`는 30분 칸의 정수 인덱스입니다.
+HTML 인덱스 12는 06:00, 19는 09:30, 47은 23:30입니다. API에는 정수 대신 아래처럼 변환해서 보냅니다.
+
+```javascript
+const toTime = i => `${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`;
+const availability = Object.fromEntries(
+  state.me.dates.map(date => [date, (state.me.slots[date] || []).map(toTime)])
+);
+const submission = {
+  availability,
+  start_location_text: state.me.place,
+  desired_text: state.me.good,
+  avoided_text: state.me.bad,
+};
+```
+
+HTML의 `db.doc(...)`, `saveMe()` 직접 저장과 데모 추천 계산을 그대로 실행하지 않습니다.
+기존 API 토큰·초대 계약과 전원 제출 후 서버 계산을 사용합니다. HTML의 12인 데모 상한·6자리 단독 코드·부분 참석
+데모 결과는 현재 API 계약이 아닙니다. 실제 화면의 2~10명 범위와 기존 모임 ID·초대 코드·개인 토큰 계약을 따릅니다.
 
 ## DB 영향
 

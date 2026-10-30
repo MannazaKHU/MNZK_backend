@@ -3,7 +3,7 @@ import secrets
 from dataclasses import dataclass
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Body, Depends, Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -11,7 +11,7 @@ from app import store
 from app.database import get_session
 from app.errors import ApiError
 from app.models import Meeting, Member
-from app.schemas import ConfirmPlaceReq, CreateMeetingReq, JoinReq, SubmissionReq, TextReq
+from app.schemas import AvailabilityParseReq, ConfirmPlaceReq, CreateMeetingReq, JoinReq, SubmissionReq
 from app.services import preference_service, schedule_service, submission_service
 
 router = APIRouter(prefix="/api/meetings", tags=["meetings"])
@@ -35,6 +35,13 @@ def context(meeting_id: str, db: Annotated[Session, Depends(get_session)],
 
 Ctx = Annotated[Context, Depends(context)]
 DB = Annotated[Session, Depends(get_session)]
+CreateBody = Annotated[CreateMeetingReq, Body(openapi_examples={
+    "group_screen": {
+        "summary": "그룹 만들기 화면: 이름과 인원만 전송",
+        "description": "날짜·시간·추천 옵션은 선택 설정이며 이 화면에서는 보내지 않습니다.",
+        "value": {"title": "만나자쿠테스트", "host_name": "성윤", "expected_member_count": 4},
+    },
+})]
 
 
 def view(ctx):
@@ -50,12 +57,12 @@ def workflow_context(ctx):
 
 
 @router.post("", status_code=201)
-def create_meeting(req: CreateMeetingReq, db: DB):
+def create_meeting(req: CreateBody, db: DB):
     host, token = store.new_member(req.host_name, is_host=True)
     meeting = Meeting(title=req.title, invite_code=secrets.token_urlsafe(24),
                       expected_member_count=req.expected_member_count,
                       recommendation_options=req.recommendation_options.model_dump(),
-                      candidate_dates=req.candidate_dates, time_range=req.time_range.model_dump(),
+                      candidate_dates=req.candidate_dates or [], time_range=req.time_range.model_dump(),
                       slot_minutes=req.slot_minutes, members=[host])
     db.add(meeting)
     db.commit()
@@ -92,8 +99,8 @@ async def submit_response(req: SubmissionReq, ctx: Ctx):
 
 
 @router.post("/{meeting_id}/availability/parse")
-async def parse_availability(req: TextReq, ctx: Ctx):
-    return await schedule_service.parse_availability_text(view(ctx), req.text)
+async def parse_availability(req: AvailabilityParseReq, ctx: Ctx):
+    return await schedule_service.parse_availability_text(view(ctx), req.text, selected_dates=req.selected_dates)
 
 
 @router.get("/{meeting_id}/schedule")

@@ -81,12 +81,17 @@ def snapshot(meeting: Meeting, *, host=False):
     created_at = meeting.created_at
     if created_at.tzinfo is None:
         created_at = created_at.replace(tzinfo=timezone.utc)
+    fixed_dates = bool(meeting.candidate_dates)
+    dates = meeting.candidate_dates if fixed_dates else sorted({
+        day for member in meeting.members for day, times in (member.availability or {}).items() if times
+    })
     body = {
         "id": meeting.id, "title": meeting.title,
         "expected_member_count": meeting.expected_member_count,
         "recommendation_options": meeting.recommendation_options,
         "progress": progress(meeting), "processing_error": meeting.processing_error,
-        "candidate_dates": meeting.candidate_dates, "time_range": meeting.time_range,
+        "date_selection_mode": "fixed" if fixed_dates else "free",
+        "candidate_dates": dates, "time_range": meeting.time_range,
         "slot_minutes": meeting.slot_minutes, "status": meeting.status,
         "confirmed": meeting.confirmed, "confirmed_place": meeting.confirmed_place,
         "revision": meeting.revision, "created_at": created_at.isoformat(),

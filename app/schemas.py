@@ -1,12 +1,12 @@
 """Validated inputs. Dates and HH:MM times are interpreted in Asia/Seoul."""
 import re
-from datetime import date, datetime, timedelta
+from datetime import date
 from typing import Annotated, Literal
-from zoneinfo import ZoneInfo
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=20)]
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
+CalendarDate = Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2}$", json_schema_extra={"format": "date"})]
 
 
 def check_date(value: str):
@@ -27,10 +27,14 @@ class Input(BaseModel):
 
 
 class TimeRange(Input):
-    start: str = "10:00"
-    end: str = "23:00"
+    start: str = "06:00"
+    end: str = "24:00"
     _start = field_validator("start")(check_time)
-    _end = field_validator("end")(check_time)
+
+    @field_validator("end")
+    @classmethod
+    def end_time(cls, value):
+        return value if value == "24:00" else check_time(value)
 
     @model_validator(mode="after")
     def ordered(self):
@@ -39,30 +43,29 @@ class TimeRange(Input):
         return self
 
 
-def default_dates():
-    today = datetime.now(ZoneInfo("Asia/Seoul")).date()
-    return [(today + timedelta(days=i)).isoformat() for i in range(7)]
-
-
 class CreateMeetingReq(Input):
     title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40)] = "우리 모임"
     host_name: Name = "방장"
     expected_member_count: int = Field(ge=1, le=10, description="방장 포함 총 참여 인원. 생성 시 필수")
     recommendation_options: "RecommendReq" = Field(default_factory=lambda: RecommendReq())
-    candidate_dates: list[str] = Field(default_factory=default_dates, min_length=1, max_length=14)
-    time_range: TimeRange = Field(default_factory=TimeRange)
-    slot_minutes: Literal[30, 60] = 60
+    candidate_dates: list[CalendarDate] | None = Field(
+        default=None, min_length=1, max_length=14,
+        description="고급 선택 설정: 공통 날짜 범위를 제한할 때만 지정(YYYY-MM-DD). 생략하면 각 참가자가 달력에서 날짜를 자유롭게 선택합니다.",
+    )
+    time_range: TimeRange = Field(default_factory=TimeRange,
+                                  description="선택 설정: 일정 입력 가능 시간 범위. 생성 화면에서는 생략할 수 있습니다.")
+    slot_minutes: Literal[30, 60] = Field(default=30, description="선택 설정: 일정 입력 슬롯 간격(분). 기본 30분.")
 
     @field_validator("candidate_dates")
     @classmethod
     def dates(cls, values):
-        return sorted({check_date(v) for v in values})
+        return sorted({check_date(v) for v in values}) if values is not None else None
 
     @model_validator(mode="after")
     def has_full_slot(self):
-        start = datetime.strptime(self.time_range.start, "%H:%M")
-        end = datetime.strptime(self.time_range.end, "%H:%M")
-        if (end - start).total_seconds() < self.slot_minutes * 60:
+        sh, sm = map(int, self.time_range.start.split(":"))
+        eh, em = map(int, self.time_range.end.split(":"))
+        if (eh * 60 + em) - (sh * 60 + sm) < self.slot_minutes:
             raise ValueError("선택 범위에 최소 한 개의 시간 슬롯이 있어야 해요.")
         return self
 
@@ -74,6 +77,16 @@ class JoinReq(Input):
 
 class TextReq(Input):
     text: Text
+
+
+class AvailabilityParseReq(TextReq):
+    selected_dates: list[CalendarDate] | None = Field(default=None, min_length=1, max_length=14,
+        description="달력에서 고른 날짜. 자유 날짜 모임에서 자연어 시간을 미리 해석할 때 사용하며 저장하지 않습니다.")
+
+    @field_validator("selected_dates")
+    @classmethod
+    def dates(cls, values):
+        return sorted({check_date(v) for v in values}) if values is not None else None
 
 
 class Location(Input):

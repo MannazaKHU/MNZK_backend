@@ -1,34 +1,44 @@
 """1-1, 1-2, 그룹 시간 조율. AI 없이 코드로만 계산한다 (크레딧 0원)."""
 import json
 import math
-from datetime import datetime, timedelta
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from app import prompts
 from app.clients import ai_client as ai
 from app.config import settings
 from app.errors import ApiError
+from app.schemas import check_date
 
 WEEKDAYS = ["월", "화", "수", "목", "금", "토", "일"]
 
 
 def all_slots(meeting: dict) -> list:
     """time_range 와 slot_minutes 로 만들 수 있는 슬롯 시작 시각 목록. 예: ['10:00','11:00',...]"""
-    start = datetime.strptime(meeting["time_range"]["start"], "%H:%M")
-    end = datetime.strptime(meeting["time_range"]["end"], "%H:%M")
-    step = timedelta(minutes=meeting["slot_minutes"])
-    slots, t = [], start
-    while t + step <= end:
-        slots.append(t.strftime("%H:%M"))
-        t += step
-    return slots
+    sh, sm = map(int, meeting["time_range"]["start"].split(":"))
+    eh, em = map(int, meeting["time_range"]["end"].split(":"))
+    step = meeting["slot_minutes"]
+    return [f"{m // 60:02d}:{m % 60:02d}" for m in range(sh * 60 + sm, eh * 60 + em - step + 1, step)]
 
 
 def clean_availability(meeting: dict, availability: dict, strict: bool = True) -> dict:
     """후보 날짜·슬롯만 남긴다. strict=True 면 틀린 값이 있을 때 에러."""
     valid_slots = set(all_slots(meeting))
+    free_dates = meeting.get("date_selection_mode") == "free"
+    today = datetime.now(ZoneInfo("Asia/Seoul")).date().isoformat()
     result = {}
     for date, times in availability.items():
-        if date not in meeting["candidate_dates"]:
+        try:
+            check_date(date)
+        except ValueError:
+            if strict:
+                raise ApiError(400, "INVALID_DATE", "날짜는 YYYY-MM-DD 형식의 실제 날짜여야 해요.") from None
+            continue
+        if free_dates and date < today:
+            if strict:
+                raise ApiError(400, "INVALID_DATE", "오늘 이후의 날짜를 선택해 주세요.")
+            continue
+        if not free_dates and date not in meeting["candidate_dates"]:
             if strict:
                 raise ApiError(400, "INVALID_DATE", f"{date}는 열려 있는 날짜가 아니에요.")
             continue
@@ -53,7 +63,9 @@ def heatmap(meeting: dict) -> dict:
 
 
 def _end_time(start: str, minutes: int) -> str:
-    return (datetime.strptime(start, "%H:%M") + timedelta(minutes=minutes)).strftime("%H:%M")
+    hour, minute = map(int, start.split(":"))
+    end = hour * 60 + minute + minutes
+    return f"{end // 60:02d}:{end % 60:02d}"
 
 
 def best_slots(meeting: dict, min_hours: float = 2, top: int = 5) -> dict:
@@ -110,8 +122,14 @@ def best_slots(meeting: dict, min_hours: float = 2, top: int = 5) -> dict:
     }
 
 
-async def parse_availability_text(meeting: dict, text: str) -> dict:
+async def parse_availability_text(meeting: dict, text: str, *, selected_dates: list[str] | None = None) -> dict:
     """(Should) '토요일 저녁 다 돼' -> {'availability': {...}, 'note': '...'}"""
+    dates = selected_dates if selected_dates is not None else meeting["candidate_dates"]
+    if not dates:
+        raise ApiError(400, "DATES_REQUIRED", "달력에서 날짜를 고른 뒤 selected_dates에 보내 주세요.")
+    clean_availability(meeting, {d: [] for d in dates})
+    # AI/preview output is confined to the selected dates, even in a free-date meeting.
+    meeting = {**meeting, "candidate_dates": dates, "date_selection_mode": "fixed"}
     slots = all_slots(meeting)
     if settings.MOCK_MODE:
         if "저녁" in text:

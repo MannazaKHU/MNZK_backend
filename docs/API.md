@@ -12,6 +12,21 @@
 {
   "title": "동아리 모임",
   "host_name": "민수",
+  "expected_member_count": 4
+}
+```
+
+위 세 필드가 그룹 만들기 화면의 요청입니다. 날짜·가능 시간·출발지·선호는 이후 각 참여자의 응답 제출에서 보냅니다.
+생성 화면에서는 `candidate_dates`를 보내지 않습니다. 서버는 `date_selection_mode: free`인 모임을 만들고,
+각 참가자는 달력에서 오늘 이후 날짜를 자유롭게 선택해 나중에 `availability`로 제출합니다. 오늘부터 7일 제한은 없습니다.
+`candidate_dates`를 명시하면 해당 날짜로 제한하는 고급 fixed 모임이 되며 기존 연동과의 호환용으로 지원합니다.
+
+공통 일정 범위나 추천 옵션을 별도로 지정하는 경우에만 다음처럼 추가할 수 있습니다.
+
+```json
+{
+  "title": "동아리 모임",
+  "host_name": "민수",
   "expected_member_count": 4,
   "candidate_dates": ["2026-11-01", "2026-11-02"],
   "time_range": {"start": "10:00", "end": "23:00"},
@@ -26,8 +41,13 @@
 
 `expected_member_count`는 필수이며 4명으로 고정되지 않습니다.
 현재 인원 상한은 기존 서비스 제한에 따라 10명이며 1~10명 중 설정합니다. 방장도 인원에 포함됩니다.
-나머지 필드는 선택 사항입니다. 기본 후보 날짜는 한국 날짜 기준 오늘부터 7일,
-시간 범위는 10:00~23:00, 슬롯은 60분, 추천 개수는 5개, 반경은 1000m입니다.
+나머지 필드는 선택 사항입니다. 기본은 자유 날짜, 시간 범위 06:00~24:00, 슬롯 30분,
+추천 개수 5개, 반경 1000m입니다. `24:00`은 종료 시각이며 슬롯 시작으로 보낼 수 없습니다.
+연도만 있는 `["2026"]`은 날짜가 아니므로 400이며,
+수동으로 범위를 지정할 때는 `["2026-11-01", "2026-11-02"]`처럼 전체 날짜를 사용합니다.
+자유 날짜 모임의 응답 `candidate_dates`는 제출된 가능 날짜의 합집합이며, 최초에는 빈 배열입니다.
+선택 가능한 날짜 목록이 아니므로 이 값으로 달력의 날짜를 제한하지 않습니다.
+명시한 날짜 범위로 생성한 fixed 모임에서만 범위 밖 날짜를 `INVALID_DATE`로 거부합니다.
 추천 옵션은 마지막 제출자의 요청이 아니라 모임 생성 시 지정한 값을 사용합니다.
 
 응답 `201`:
@@ -38,6 +58,10 @@
     "id": "<meeting-id>",
     "title": "동아리 모임",
     "expected_member_count": 4,
+    "date_selection_mode": "free",
+    "candidate_dates": [],
+    "time_range": {"start": "06:00", "end": "24:00"},
+    "slot_minutes": 30,
     "status": "waiting",
     "revision": 1,
     "invite_code": "<invite-code>",
@@ -113,6 +137,10 @@ Authorization: Bearer <access_token>
 ```
 
 `availability`, `desired_text`, `avoided_text`를 함께 보냅니다.
+달력에서 고른 날짜를 availability의 키로, 시간 칠하기에서 선택한 30분 칸의 시작 시각을 값으로 보냅니다.
+새로운 자유 날짜 모임은 아직 다른 사람이 제출하지 않은 날짜나 여러 달 뒤 날짜도 받을 수 있습니다.
+자유 날짜 모임의 과거 날짜, 잘못된 달력 날짜, 30분 칸에 정렬되지 않은 시각은 거부합니다.
+현재 한 참여자가 한 번에 제출할 수 있는 날짜는 최대 14개입니다.
 특별한 선호·비선호가 없으면 해당 문자열을 빈 값으로 보낼 수 있습니다.
 선택 필드 `conditions`를 명시하면 확인한 구조화 조건을 검색·요약·점수 계산에 우선 사용하며 AI로 다시 해석하지 않습니다.
 `conditions: []`는 조건 없음입니다. 생략하면 자연어를 해석하며, 수량·단위 또는 원문 인용이 잘못된 AI 결과는 `502 AI_ERROR`로 반환하고 제출 완료로 저장하지 않습니다.
@@ -132,7 +160,8 @@ Authorization: Bearer <access_token>
 희망·회피 원문과 분석 결과를 서버에 보존합니다.
 
 슬롯은 시작 시각입니다. 30분 설정에서 `18:00`은 18:00~18:30입니다.
-모임 후보 날짜·슬롯만 입력할 수 있습니다. `{"availability": {}}`도 응답 제출로 인정하되
+fixed 모임만 생성 시 지정한 후보 날짜로 제한하며, 두 모드 모두 모임 시간 범위·슬롯을 검사합니다.
+`{"availability": {}}`도 응답 제출로 인정하되
 공통 시간이 없으므로 추천 결과 대신 `schedule_conflict`가 될 수 있습니다.
 
 응답 `200`은 최신 **모임 객체**입니다.
@@ -208,7 +237,7 @@ candidate_count, fallback, recommendations가 있습니다.
 ## 8. 보조 조회·해석
 
 - `GET /api/meetings/{id}/schedule?min_hours=2&top=5`: 후보 시간·히트맵 참고 조회. 전원 자동 처리와 별개이며 수동 시간 확정은 하지 않습니다.
-- `POST /api/meetings/{id}/availability/parse`, `{"text":"일요일 저녁 가능해"}`: 자연어 일정 해석. 결과를 직접 저장하지 않으므로 최종 응답 제출에 포함합니다.
+- `POST /api/meetings/{id}/availability/parse`, `{"text":"저녁 가능해","selected_dates":["2026-11-01"]}`: 달력에서 고른 날짜의 자연어 시간 미리 해석. 저장하지 않으며 최종 제출에 포함합니다. 자유 날짜 모임에 제출된 날짜도 없고 selected_dates도 없으면 `400 DATES_REQUIRED`입니다.
 - `GET /api/meetings/{id}/preferences/summary`: 현재 제출된 선호의 코드 기반 요약. total은 목표 인원수입니다.
 
 ## 9. 오류 처리
@@ -216,6 +245,7 @@ candidate_count, fallback, recommendations가 있습니다.
 | 상태 | 주요 code | 처리 |
 |---|---|---|
 | 400 | VALIDATION_ERROR / INVALID_DATE / INVALID_SLOT / LOCATION_NOT_FOUND | 입력 수정 |
+| 400 | DATES_REQUIRED | 자연어 시간 해석에 사용할 selected_dates 전달 |
 | 400 | MEETING_FULL | 설정한 인원 초과 |
 | 401 | TOKEN_REQUIRED / INVALID_TOKEN | 본인 모임 토큰 확인 |
 | 403 | HOST_REQUIRED / INVALID_INVITE | 방장 권한 또는 초대 코드 확인 |
