@@ -6,7 +6,7 @@
 
 ## 현재 연결 상태와 보존한 코드
 
-현재 저장소는 origin `MannazaKHU/MNZK_backend`, 브랜치는 `feat/recommendation-rules`입니다.
+저장소는 `MannazaKHU/MNZK_backend`이며 `feat/recommendation-rules` 작업은 PR #1로 `new/back`에 머지되었습니다.
 기존 지역 검색/API Hub, Maps/Directions의 인증·엔드포인트를 이번 블로그 작업에서 변경하지 않았습니다.
 기존 추천 경로는 그대로 장소와 자동차 이동시간을 수집하고 아래 데이터 처리부를 사용합니다.
 팀원의 블로그 검색 공급자는 아직 미연결입니다. 제목·요약문 추출은 기존 AI 연동을 사용하는 실제 함수로 구현하고 기본 콜백으로 연결했습니다.

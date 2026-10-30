@@ -97,10 +97,11 @@ def test_network_error_does_not_look_like_authentication_failure(monkeypatch, ca
     assert "인증" not in output
 
 
-def test_exported_environment_conflict_warns_without_values(monkeypatch, capsys):
-    monkeypatch.setattr("scripts.check_naver.dotenv_values", lambda p: {"NCP_MAPS_KEY": "file-secret"})
+def test_exported_environment_conflict_warns_without_values(monkeypatch, capsys, tmp_path):
+    env_path = tmp_path / ".env"
+    env_path.write_text("NCP_MAPS_KEY=file-secret\n")
     monkeypatch.setenv("NCP_MAPS_KEY", "exported-secret")
-    warn_env_conflicts(["NCP_MAPS_KEY"])
+    warn_env_conflicts(["NCP_MAPS_KEY"], env_path=env_path)
     output = capsys.readouterr().out
     assert "exported environment overrides .env: NCP_MAPS_KEY" in output
     assert "unset NCP_MAPS_KEY" in output

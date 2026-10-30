@@ -114,6 +114,9 @@ Authorization: Bearer <access_token>
 
 `availability`, `desired_text`, `avoided_text`를 함께 보냅니다.
 특별한 선호·비선호가 없으면 해당 문자열을 빈 값으로 보낼 수 있습니다.
+선택 필드 `conditions`를 명시하면 확인한 구조화 조건을 검색·요약·점수 계산에 우선 사용하며 AI로 다시 해석하지 않습니다.
+`conditions: []`는 조건 없음입니다. 생략하면 자연어를 해석하며, 수량·단위 또는 원문 인용이 잘못된 AI 결과는 `502 AI_ERROR`로 반환하고 제출 완료로 저장하지 않습니다.
+조건 형식은 [추천 규칙](RECOMMENDATION_RULES.md)을 참고하세요.
 출발지 이름 `start_location_text` 또는 아래의 좌표 객체 중 하나는 필요합니다.
 
 ```json

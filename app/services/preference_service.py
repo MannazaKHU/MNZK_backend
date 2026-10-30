@@ -3,6 +3,8 @@ import json
 import re
 from collections import Counter
 
+from pydantic import ValidationError
+
 from app import prompts
 from app.clients import ai_client as ai
 from app.clients import naver_client as naver
@@ -51,16 +53,58 @@ def _str_list(v) -> list:
     return [str(x).strip() for x in (v or []) if str(x).strip()][:10]
 
 
+def _condition_fields(conditions: list) -> dict:
+    """검색·요약도 사용자가 확인한 조건을 기준으로 만든다."""
+    fields = {"likes": [], "dislikes": [], "mood": [], "budget_max": None, "indoor": "any"}
+    budgets, environments = [], []
+    for c in conditions:
+        if c.get("needs_confirmation"):
+            continue
+        targets = [c["target"], *c.get("alternatives", [])]
+        if c["category"] == "kind":
+            fields["likes" if c["direction"] == "preference" else "dislikes"].extend(targets)
+        if c["direction"] != "preference":
+            continue
+        if c["category"] == "atmosphere":
+            fields["mood"].extend(targets)
+        if c["category"] == "cost" and c.get("operator") == "lte" and c.get("unit") == "KRW":
+            if c.get("value") is not None:
+                budgets.append(c["value"])
+        if c["category"] == "environment":
+            choice = {"indoor": "indoor", "실내": "indoor", "outdoor": "outdoor", "야외": "outdoor"}
+            # OR 대안이 있으면 한쪽을 필수 검색 조건으로 만들지 않는다.
+            mapped = {choice[t] for t in targets if t in choice}
+            if len(mapped) == 1 and all(t in choice for t in targets):
+                environments.append(mapped.pop())
+    for key in ("likes", "dislikes", "mood"):
+        fields[key] = list(dict.fromkeys(fields[key]))
+    fields["budget_max"] = min(budgets) if budgets else None
+    if isinstance(fields["budget_max"], float) and fields["budget_max"].is_integer():
+        fields["budget_max"] = int(fields["budget_max"])
+    if environments and len(set(environments)) == 1:
+        fields["indoor"] = environments[0]
+    return fields
+
+
 async def parse_preference(text: str) -> dict:
     if settings.MOCK_MODE:
         raw = _rule_parse(text)
     else:
         raw = await ai.structured(prompts.PREFERENCE_SYSTEM, text,
                                    prompts.PREFERENCE_SCHEMA, step="parse_preference")
+    conditions = raw.get("conditions")
+    if conditions is not None:
+        from app.conditions import Condition
+        try:
+            conditions = [Condition.model_validate(c).model_dump() for c in conditions]
+            if any(not c["raw_text"].strip() or c["raw_text"] not in text for c in conditions):
+                raise ValueError("Ungrounded condition")
+        except (ValidationError, TypeError, ValueError):
+            raise ApiError(502, "AI_ERROR", "AI가 해석한 조건 형식이 올바르지 않아요. 다시 시도해 주세요.") from None
     budget = raw.get("budget_max") or 0
     indoor = raw.get("indoor") if raw.get("indoor") in ("indoor", "outdoor", "any") else "any"
     return {
-        "conditions": raw.get("conditions"),
+        "conditions": conditions,
         "likes": _str_list(raw.get("likes")),
         "dislikes": _str_list(raw.get("dislikes")),
         "mood": _str_list(raw.get("mood")),
@@ -94,15 +138,20 @@ async def build_preference(text: str, start_location: dict = None) -> tuple:
 async def build_submission_preference(req) -> dict:
     """Keep explicit positive/negative inputs and resolve the explicitly supplied origin."""
     text = f"원하는 조건: {req.desired_text or '특별한 조건 없음'}. 피하고 싶은 조건: {req.avoided_text or '없음'}."
-    parsed = await parse_preference(text)
-    if settings.MOCK_MODE:
+    confirmed = [c.model_dump() for c in req.conditions] if req.conditions is not None else None
+    parsed = {**_condition_fields(confirmed), "conditions": confirmed} if confirmed is not None else await parse_preference(text)
+    if settings.MOCK_MODE and confirmed is None:
         good, bad = _rule_parse(req.desired_text), _rule_parse(req.avoided_text)
         parsed.update(likes=good["likes"], dislikes=list(dict.fromkeys(
             good["dislikes"] + bad["likes"] + bad["dislikes"])))
+    if confirmed is None and parsed.get("conditions") is not None:
+        if any(c["raw_text"] not in req.desired_text and c["raw_text"] not in req.avoided_text
+               for c in parsed["conditions"]):
+            raise ApiError(502, "AI_ERROR", "AI가 해석한 조건의 원문을 확인할 수 없어요. 다시 시도해 주세요.")
     loc = req.start_location.model_dump() if req.start_location else await naver.geocode(req.start_location_text.strip())
     if not loc:
         raise ApiError(400, "LOCATION_NOT_FOUND", "출발지를 찾지 못했어요. 구체적인 장소명이나 좌표를 입력해 주세요.")
-    return {"raw_text": text, "conditions": ([c.model_dump() for c in req.conditions] if req.conditions is not None else extract_conditions(req.desired_text, parsed, "preference") + extract_conditions(req.avoided_text, parsed, "avoidance")), "likes": parsed["likes"], "dislikes": parsed["dislikes"],
+    return {"raw_text": text, "conditions": (confirmed if confirmed is not None else extract_conditions(req.desired_text, parsed, "preference") + extract_conditions(req.avoided_text, parsed, "avoidance")), "likes": parsed["likes"], "dislikes": parsed["dislikes"],
             "mood": parsed["mood"], "budget_max": parsed["budget_max"], "indoor": parsed["indoor"],
             "start_location": loc, "start_location_text": req.start_location_text,
             "desired_text": req.desired_text, "avoided_text": req.avoided_text,
@@ -111,6 +160,8 @@ async def build_submission_preference(req) -> dict:
 
 def merge_group(prefs: list) -> dict:
     """여러 명의 조건 합치기: likes 많이 나온 순, dislikes 전부, 예산 최소, 실내 다수결."""
+    conditions = [c for p in prefs for c in (p.get("conditions") or [])]
+    prefs = [_condition_fields(p["conditions"]) if p.get("conditions") is not None else p for p in prefs]
     likes = Counter(w for p in prefs for w in p["likes"])
     dislikes = list(dict.fromkeys(w for p in prefs for w in p["dislikes"]))
     mood = [w for w, _ in Counter(w for p in prefs for w in p["mood"]).most_common()]
@@ -122,6 +173,7 @@ def merge_group(prefs: list) -> dict:
         "mood": mood,
         "budget_max": min(budgets) if budgets else None,
         "indoor": votes.most_common(1)[0][0] if votes else "any",
+        "conditions": conditions,
     }
 
 

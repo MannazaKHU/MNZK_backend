@@ -214,8 +214,9 @@ async def driving(start: dict, goal: dict, *, raise_on_error: bool = False):
         distance, duration = float(summary["distance"]), float(summary["duration"])
         if not (0 <= distance < math.inf and 0 <= duration < math.inf):
             return None
+        # 점수·순위 계산에는 원본 밀리초를 소수 분으로 전달한다.
         return {"distance_km": round(distance / 1000, 1),
-                "minutes": max(1, round(duration / 60000))}
+                "minutes": duration / 60000}
     except ApiError:
         if raise_on_error:
             raise

@@ -16,9 +16,9 @@ from app.config import settings
 from app.errors import ApiError
 
 
-def warn_env_conflicts(names):
+def warn_env_conflicts(names, *, env_path=None):
     """load_dotenv는 이미 export된 변수를 덮어쓰지 않는다. 값은 출력하지 않는다."""
-    path = Path(__file__).resolve().parents[1] / ".env"
+    path = Path(env_path) if env_path is not None else Path(__file__).resolve().parents[1] / ".env"
     if not path.is_file():
         return
     values = dotenv_values(path)

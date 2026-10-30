@@ -22,6 +22,8 @@
 
 `conditions` 생략 시 기존 ChatKHU 연동이 자연어를 구조화합니다. 명시한 배열은 확인·수정한 사용자 조건으로 사용하며,
 빈 배열은 조건 없음입니다. mock 추출기는 제한된 단어·비용·분위기만 지원하고 알 수 없는 절은 확인 필요로 둡니다.
+명시한 `conditions`는 AI로 다시 해석하지 않으며 후보 검색·그룹 요약·점수 계산에 동일하게 사용합니다.
+원문과 구조화 조건이 다르면 확인된 구조화 조건을 우선합니다. 잘못된 AI 조건은 `502 AI_ERROR`로 반환하고 제출 완료로 저장하지 않습니다.
 AI가 반환한 raw_text는 원문 부분 문자열이어야 합니다. 구조는 Pydantic으로 검증하고 AI는 점수·순위를 결정하지 않습니다.
 `extra_text`는 검색 맥락이며 개인의 필수 조건을 대신하지 않습니다. 개인 요구는 제출 조건에 넣습니다.
 
@@ -92,10 +94,11 @@ P와 N 각각은 조건→세부 종류→참여자 순 평균으로 참여자�
 DB 마이그레이션이 필요 없습니다. 모임 인증·revision·기존 결과 무효화 동작도 재사용합니다.
 기존에 저장된 추천 결과는 소급 변경하지 않으며 새 제출로 재계산됩니다.
 
-검증 명령: `.venv\Scripts\python.exe -m pytest -q`.
+검증 명령: `.venv/bin/python -m pytest -q` (Windows: `.venv\Scripts\python.exe -m pytest -q`).
 외부 AI·지도 호출 없이 SQLite 테스트 DB와 mock/픽스처만 사용합니다.
 
-최종 로컬 검증: `52 passed` (기존 테스트 포함). Starlette TestClient의 httpx 사용 중단 예정 경고 1건이 있습니다.
+PR #1 검토 후 검증: `136 passed` (기존 테스트·회귀 테스트 포함). Starlette TestClient의 httpx 사용 중단 예정 경고 1건이 있습니다.
+발견 사항과 보완 내용은 [PR #1 검토 기록](PR_1_REVIEW.md)을 참고하세요.
 시연 픽스처 재생성: `.venv\Scripts\python.exe -m examples.generate_recommendation_demo`.
 
 범위 확장/조정: 후기 기반 추정(75/25), 확정/추정/미확인 집계와 팀원 데이터 입력 인터페이스가 추가되었습니다.
