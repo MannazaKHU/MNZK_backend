@@ -217,11 +217,14 @@ docker compose exec api python -m scripts.smoke_test --completion
 | `NAVER_SEARCH_URL` | 지역 검색 주소 | .env.example 참고 |
 | `NCP_MAPS_KEY_ID`, `NCP_MAPS_KEY`, `NCP_MAPS_BASE` | NCP Maps 길찾기·좌표 변환 | .env.example 참고 |
 | `MAPS_TIMEOUT_SECONDS` | 네이버 API 요청별 제한 시간(초) | 10 |
+| `ENABLE_BLOG_ENRICHMENT` | 실제 AI·지도 모드에서 블로그 근거 자동 수집 | false |
+| `NAVER_BLOG_URL` | 기존 검색 키를 사용하는 API HUB 블로그 주소 | .env.example 참고 |
 
 `APP_ENV=production`에서는 docs·OpenAPI·개발용 usage API를 노출하지 않습니다.
 기존 `MOCK_MODE=1/0/true/false`도 읽지만 `AI_PROVIDER`와 `MAPS_PROVIDER` 설정이 우선합니다.
 
 네이버 키 발급·환경변수·개별 연결 확인·Railway 적용은 [네이버 연동 가이드](docs/NAVER.md)를 참고하세요.
+블로그 API를 기존 검색 Application에 추가했다면 [블로그 근거 연결](docs/BLOG.md)의 활성화 설정을 적용하세요.
 CLOVA 관련 변수와 JSON 저장용 `DATA_PATH`는 더 이상 사용하지 않습니다.
 
 ## DB와 마이그레이션

@@ -1,5 +1,4 @@
-# INACTIVE API DRAFT: preserved after scope change; not imported by the active recommendation path.
-"""Official Naver Blog Search only. Never fetch blog bodies or follow result URLs."""
+"""NAVER API HUB Blog Search. Never fetch blog bodies or follow result URLs."""
 from datetime import datetime, timezone
 from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 
@@ -8,13 +7,11 @@ import httpx
 from app.clients.naver_client import _clean
 from app.config import settings
 
-BLOG_URL = 'https://openapi.naver.com/v1/search/blog.json'
-
-
 class BlogSearchError(Exception):
     """Only a public, predefined code may cross the optional enrichment boundary."""
-    def __init__(self, code):
+    def __init__(self, code, *, http_status=None):
         self.code = code
+        self.http_status = http_status
         super().__init__(code)
 
 
@@ -34,19 +31,25 @@ def url_key(url):
 
 
 async def search_blogs(query, display):
-    if not settings.NAVER_BLOG_CLIENT_ID or not settings.NAVER_BLOG_CLIENT_SECRET:
+    if not settings.NAVER_CLIENT_ID.strip() or not settings.NAVER_CLIENT_SECRET.strip():
         raise BlogSearchError('BLOG_KEYS_MISSING')
+    display = min(100, max(1, display))
     try:
         async with httpx.AsyncClient(timeout=settings.BLOG_TIMEOUT_SECONDS, follow_redirects=False) as client:
-            response = await client.get(BLOG_URL, params={
-                'query': query, 'display': min(100, max(1, display)), 'start': 1, 'sort': 'sim',
-            }, headers={'X-Naver-Client-Id': settings.NAVER_BLOG_CLIENT_ID,
-                        'X-Naver-Client-Secret': settings.NAVER_BLOG_CLIENT_SECRET})
+            response = await client.get(settings.NAVER_BLOG_URL, params={
+                'query': query, 'display': display, 'start': 1, 'sort': 'sim', 'format': 'json',
+            }, headers={'X-NCP-APIGW-API-KEY-ID': settings.NAVER_CLIENT_ID,
+                        'X-NCP-APIGW-API-KEY': settings.NAVER_CLIENT_SECRET,
+                        'Accept': 'application/json'})
             if response.status_code != 200:
                 raise BlogSearchError('BLOG_RATE_LIMIT' if response.status_code == 429 else
-                                      'BLOG_AUTH_ERROR' if response.status_code in {401, 403} else 'BLOG_SEARCH_FAILED')
-            payload = response.json()
-            items = payload.get('items')
+                                      'BLOG_AUTH_ERROR' if response.status_code in {401, 403} else 'BLOG_SEARCH_FAILED',
+                                      http_status=response.status_code)
+            try:
+                payload = response.json()
+            except ValueError:
+                raise BlogSearchError('BLOG_INVALID_RESPONSE') from None
+            items = payload.get('items') if isinstance(payload, dict) else None
             if not isinstance(items, list):
                 raise BlogSearchError('BLOG_INVALID_RESPONSE')
     except httpx.TimeoutException:
@@ -60,11 +63,11 @@ async def search_blogs(query, display):
             continue
         url = item.get('link')
         key = url_key(url)
-        if not key or key in seen:
+        if not key or key in seen or len(url) > 4000:
             continue
         seen.add(key)
         # Clean only markup; quotations are checked against these exact API fields.
         results.append({'url': url, 'title': _clean(str(item.get('title') or ''))[:1000],
                         'description': _clean(str(item.get('description') or ''))[:4000],
-                        'postdate': str(item.get('postdate') or ''), 'fetched_at': fetched_at})
+                        'postdate': str(item.get('postdate') or '')[:30], 'fetched_at': fetched_at})
     return results

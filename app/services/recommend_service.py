@@ -111,7 +111,15 @@ async def recommend(people: list, count: int, radius_m: int, extra_text: str = "
                               for j,(mid,name,loc) in enumerate(travelers)]
     # Existing search/Directions stay upstream. Team results enter through a data-only contract.
     from app.recommendation_contracts import RecommendationInputs, TravelData
-    from app.services.recommendation_pipeline import evaluate_supplied_inputs
+    from app.services.recommendation_pipeline import EvidencePolicy, evaluate_supplied_inputs
+    from app.services.blog_enrichment import configured_policy, collect_searches
+    evidence_policy = EvidencePolicy()
+    collected = None
+    if (supplied_blog_searches is None and settings.ENABLE_BLOG_ENRICHMENT
+            and settings.MAPS_PROVIDER == 'naver' and settings.AI_PROVIDER == 'chatkhu'):
+        evidence_policy = configured_policy()
+        collected = await collect_searches(places, conditions, evidence_policy)
+        supplied_blog_searches = collected.batches
     travel_inputs = []
     for pid, rows in travels.items():
         for row in rows:
@@ -124,7 +132,12 @@ async def recommend(people: list, count: int, radius_m: int, extra_text: str = "
     inputs = RecommendationInputs(meeting_id=meeting_id,
                                   participant_ids=[p.get('id', p['name']) for p in people],
                                   places=places, travel_times=travel_inputs, blog_searches=supplied_blog_searches)
-    result = await evaluate_supplied_inputs(inputs, conditions, schedule, extractor=evidence_extractor)
+    result = await evaluate_supplied_inputs(inputs, conditions, schedule, extractor=evidence_extractor,
+                                           evidence_policy=evidence_policy)
+    if collected is not None:
+        result['blog_enrichment'].update(connection_status='live', provider='naver_api_hub',
+                                         external_requests_made=collected.request_count,
+                                         search_requests_made=collected.request_count)
     result['recommendations'] = result['recommendations'][:count]
     return {**result, 'schedule': schedule, 'center': center, 'group_summary': rule_summary(merged),
             'search_queries': queries, 'candidate_count': len(places), 'fallback': False,

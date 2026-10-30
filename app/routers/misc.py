@@ -15,7 +15,8 @@ router = APIRouter(tags=["system"])
 @router.get("/health")
 def health():
     return {"ok": True, "mock": settings.AI_PROVIDER == settings.MAPS_PROVIDER == "mock",
-            "ai_provider": settings.AI_PROVIDER, "maps_provider": settings.MAPS_PROVIDER}
+            "ai_provider": settings.AI_PROVIDER, "maps_provider": settings.MAPS_PROVIDER,
+            "blog_enrichment_enabled": settings.ENABLE_BLOG_ENRICHMENT}
 
 
 @router.get("/health/ready")

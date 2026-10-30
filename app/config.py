@@ -1,5 +1,6 @@
 """Environment configuration; AI and maps can be enabled independently."""
 import os
+import math
 from urllib.parse import urlsplit
 from dotenv import load_dotenv
 
@@ -41,10 +42,9 @@ class Settings:
         self.NCP_MAPS_KEY_ID = os.getenv("NCP_MAPS_KEY_ID", "")
         self.NCP_MAPS_KEY = os.getenv("NCP_MAPS_KEY", "")
         self.NCP_MAPS_BASE = os.getenv("NCP_MAPS_BASE", "https://maps.apigw.ntruss.com")
-        # Official Developers Search credentials are separate from API Hub / Maps.
+        # Blog Search shares the existing NAVER API HUB application credentials.
         self.ENABLE_BLOG_ENRICHMENT = env_bool("ENABLE_BLOG_ENRICHMENT", False)
-        self.NAVER_BLOG_CLIENT_ID = os.getenv("NAVER_BLOG_CLIENT_ID", "")
-        self.NAVER_BLOG_CLIENT_SECRET = os.getenv("NAVER_BLOG_CLIENT_SECRET", "")
+        self.NAVER_BLOG_URL = os.getenv("NAVER_BLOG_URL", "https://naverapihub.apigw.ntruss.com/search/v1/blog")
         self.BLOG_MAX_CANDIDATES = int(os.getenv("BLOG_MAX_CANDIDATES", "5"))
         self.BLOG_QUERIES_PER_CANDIDATE = int(os.getenv("BLOG_QUERIES_PER_CANDIDATE", "2"))
         self.BLOG_RESULTS_PER_QUERY = int(os.getenv("BLOG_RESULTS_PER_QUERY", "5"))
@@ -92,6 +92,19 @@ class Settings:
                 url = urlsplit(getattr(self, name))
                 if url.scheme != "https" or not url.netloc or url.username or url.query or url.fragment:
                     raise ValueError(f"{name} must be an HTTPS URL")
+        if self.ENABLE_BLOG_ENRICHMENT:
+            limits = ((self.BLOG_MAX_CANDIDATES, 0, 20), (self.BLOG_QUERIES_PER_CANDIDATE, 0, 10),
+                      (self.BLOG_RESULTS_PER_QUERY, 1, 100), (self.BLOG_MAX_REQUESTS, 0, 100),
+                      (self.BLOG_CONCURRENCY, 1, 10))
+            if any(not lower <= value <= upper for value, lower, upper in limits) or self.BLOG_MAX_AGE_DAYS < 0:
+                raise ValueError("Invalid BLOG_* request/processing limits")
+            if any(not math.isfinite(t) or t <= 0 for t in (
+                self.BLOG_TIMEOUT_SECONDS, self.BLOG_EXTRACTION_TIMEOUT_SECONDS
+            )):
+                raise ValueError("Blog timeouts must be positive and finite")
+            url = urlsplit(self.NAVER_BLOG_URL)
+            if url.scheme != "https" or not url.netloc or url.username or url.query or url.fragment:
+                raise ValueError("NAVER_BLOG_URL must be an HTTPS URL")
 
 
 settings = Settings()

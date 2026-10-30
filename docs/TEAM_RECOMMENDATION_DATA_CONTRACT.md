@@ -1,29 +1,29 @@
 # 팀원 연동 데이터 계약 초안: 장소·이동시간·블로그 근거
 
-현재 범위는 **이미 조회된 데이터의 검증·추출·평가**입니다. 이 처리부는 네이버 검색 API 인증·HTTP 요청,
-크롤링, 방문자 리뷰 조회, 엔드포인트 이관을 수행하지 않습니다. 아래 계약은 팀원과 합의할 초안입니다.
+이 문서는 **이미 조회된 데이터의 검증·추출·평가**에 사용하는 계약입니다. 평가부 자체는 HTTP 검색을 하지 않으며,
+상위 어댑터가 조회한 결과를 받습니다. 현재 실제 API HUB 블로그 어댑터도 이 계약을 사용합니다.
 모의 데이터는 `data_origin: fixture`로 표시하며 실제 네이버 검색 결과가 아닙니다.
 
-## 현재 연결 상태와 보존한 코드
+## 현재 연결 상태
 
 저장소는 `MannazaKHU/MNZK_backend`이며 `feat/recommendation-rules` 작업은 PR #1로 `new/back`에 머지되었습니다.
 기존 지역 검색/API Hub, Maps/Directions의 인증·엔드포인트를 이번 블로그 작업에서 변경하지 않았습니다.
 기존 추천 경로는 그대로 장소와 자동차 이동시간을 수집하고 아래 데이터 처리부를 사용합니다.
-팀원의 블로그 검색 공급자는 아직 미연결입니다. 제목·요약문 추출은 기존 AI 연동을 사용하는 실제 함수로 구현하고 기본 콜백으로 연결했습니다.
-따라서 기본 추천 API 응답은 `blog_enrichment.connection_status: not_connected`이며 후기 정보는 미확인입니다.
-
-범위 조정 전 작성한 다음 초안은 삭제·되돌리기 없이 보존했습니다.
+기존 검색 Application에 블로그 API를 추가하고 `ENABLE_BLOG_ENRICHMENT=true`로 설정하면,
+실제 AI·지도 모드에서 블로그 검색 → 기본 AI 추출 → 검증·평가가 자동 실행됩니다.
+별도 블로그 키는 사용하지 않으며 `NAVER_CLIENT_ID/SECRET`를 공유합니다.
 
 | 파일 | 작성된 내용 | 현재 사용 상태 |
 |---|---|---|
-| `app/clients/blog_client.py` | 공식 블로그 검색 HTTP 클라이언트 초안 | 활성 추천 경로에서 import/호출하지 않음 |
-| `app/services/blog_enrichment.py` | 검색 요청 계획·검색 호출·기존 ChatKHU 추출 조합 초안 | 활성 추천 경로에서 import/호출하지 않음 |
-| `app/config.py`, `.env.example` | 블로그 인증·외부 호출 한도 설정 초안 | 값은 보존, 활성 처리부는 블로그 검색 인증정보를 사용하지 않음 |
-| `app/services/recommend_service.py` | 보완 호출 위치 | 외부 호출 초안 대신 `evaluate_supplied_inputs`에 연결 |
+| `app/clients/blog_client.py` | API HUB 블로그 HTTP 클라이언트 | 기존 지역 검색 키 사용, 본문 크롤링 없음 |
+| `app/services/blog_enrichment.py` | 호출 한도·동시성·오류 표준화 | `BlogSearchBatch` 생성, 직접 추출/채점하지 않음 |
+| `app/services/recommendation_pipeline.py` | 추출·근거 검증·점수 진입점 | HTTP 검색 없이 공급된 데이터만 평가 |
+| `app/services/recommend_service.py` | 자동 검색과 평가 연결 | 활성화된 실제 모드에서 자동 수집, 명시한 공급 자료가 있으면 이를 우선 사용 |
 
-신규 클라이언트로 실제 네이버 호출은 수행하지 않았습니다. 이 문서의 완료 보고는 모의 검증입니다.
-`ENABLE_BLOG_ENRICHMENT=true`나 키 설정만으로 새 블로그 호출이 시작되지 않습니다.
-팀원은 기존 인증 설정을 변경하기 전에 실제 API 계약을 별도로 확정해야 합니다.
+자동 수집 시 `blog_enrichment.connection_status: live`, `provider: naver_api_hub`와
+`search_requests_made/external_requests_made`를 반환합니다. 이 호출 수의 범위는 검색만이며 AI 추출은
+별도 `extraction_attempt_count`입니다. 비활성 또는 mock 모드이고 별도 공급도 없으면 `not_connected`입니다.
+설정·실제 인증 확인 명령·운영 한도는 [블로그 연결](BLOG.md)을 참고하세요.
 
 ## 사용할 인터페이스
 
@@ -230,8 +230,10 @@ result = await evaluate_supplied_inputs(inputs, conditions, fixture['schedule'],
 }
 ```
 
-실제 네이버 검색 및 실제 AI 요청 검증은 수행하지 않았습니다. 팀원 코드 준비 후 계약 필드 매핑과 실제 자료의 식별·추출 정확도를
-별도로 검증해야 합니다. 특히 짧은 요약문만으로 업체/시간/가격 맥락을 알 수 없는 글은 계속 보류할 수 있습니다.
+아래는 PR #1 작성 시점의 모의 검증 기록입니다. 이후 API HUB 블로그 어댑터를 연결하고
+2026-10-30에 기존 검색 키로 실제 블로그 인증 확인 1회에 성공했습니다.
+전체 처리 경로는 모의 HTTP/AI로 검증하며, 실제 ChatKHU 추출·실제 자료의 식별 정확도는 별도 검증 대상입니다.
+특히 짧은 요약문만으로 업체/시간/가격 맥락을 알 수 없는 글은 계속 보류할 수 있습니다.
 
 최종 검증 완료: 전체 `91 passed` (기존 52개 + 공급 데이터/근거 검증 31개 + 기본 AI 추출 연결 검증 8개).
 Starlette TestClient의 httpx 사용 중단 예정 경고 1건만 있습니다. `git diff --check`도 통과했습니다.
@@ -239,21 +241,21 @@ Starlette TestClient의 httpx 사용 중단 예정 경고 1건만 있습니다. 
 기존 Supabase/업무 DB 데이터 변경, 커밋·푸시·병합은 수행하지 않았습니다.
 
 
-## 담당 경계 확정과 이번 연결 변경
+## PR #1 당시 추출 연결 기록과 현재 담당 경계
 
 이전 보고 당시에는 실제 함수가 없었던 것이 아니라, 비활성 초안 `blog_enrichment.extract()`에 기존 AI 호출 구현이
 있고 활성 평가 경로의 기본값이 None이었습니다. 이번에 독립 모듈 `evidence_extraction.py`의 실제 함수로 분리하여
-`evaluate_supplied_inputs`와 `recommend`의 기본 콜백에 연결했습니다. 비활성 검색 초안은 계속 보존합니다.
+`evaluate_supplied_inputs`와 `recommend`의 기본 콜백에 연결했습니다. 이후 검색 초안을 API HUB 어댑터로 교체했습니다.
 
 | 담당 | 완료/남은 작업 |
 |---|---|
 | 내 담당 완료 | 기본 AI 추출 함수·방어 프롬프트·스키마, 인용·장소·날짜·상황 검증, 필수 조건/일반 점수, 근거·실패 사유 반환 |
-| 팀원 담당 | 실제 검색 인증·호출·한도·타임아웃, 계약에 맞는 완료된 결과 공급 |
+| 현재 연결 완료 | 기존 검색 키를 공유하는 API HUB 검색 인증·호출·한도·타임아웃, 계약에 맞는 완료 결과 공급 |
 | 팀원이 넘길 필드 | `place_id`, `query`, `status`, `items[].title/description/url/postdate`, `fetched_at`, 선택 `failure_code/data_origin` |
 | 팀원이 연결할 함수 | `recommend(..., supplied_blog_searches=batches)` 또는 장소·이동시간도 함께 준비했다면 `evaluate_supplied_inputs(inputs, conditions, schedule)` |
 | 팀원이 구현할 필요 없는 항목 | AI 추출 콜백·근거 검증·점수 계산·추천 이유 생성 |
-| 실제 검증 미실시 | 실제 네이버 검색 응답 수신과 실제 ChatKHU 요청. 모든 테스트의 AI 응답은 모의 처리 |
+| 실제 검증 범위 | API HUB 블로그 인증 1회 성공. 전체 자동 처리 테스트의 HTTP/AI는 모의 응답. 실제 ChatKHU 후기 추출은 미검증 |
 
 AI 연결이 이미 설정된 환경에서는 팀원 자료를 공급하면 기본 콜백이 실행됩니다. 기존 `AI_PROVIDER`,
 `CHATKHU_API_KEY`, `CHATKHU_BASE_URL`, `AI_MODEL` 설정을 그대로 사용하며 이 문서나 테스트에 값을 넣지 않습니다.
-공급자 미연결을 유지하는 기본 API 흐름은 AI 블로그 추출도 실행하지 않습니다.
+자동 수집이 비활성이고 별도 자료도 없으면 AI 블로그 추출은 실행하지 않습니다.

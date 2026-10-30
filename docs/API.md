@@ -247,7 +247,10 @@ candidate_count, fallback, recommendations가 있습니다.
 
 ## 팀원 API 연동 경계와 후기 근거
 
-외부 API 인증·호출은 팀원 담당으로 분리했습니다. 이미 작성한 블로그 호출 초안은 비활성 상태로 보존합니다.
-활성 추천 경로는 장소·이동시간·선택적인 블로그 검색 결과를 `RecommendationInputs`로 전달받아 같은 정책으로 계산합니다.
+`ENABLE_BLOG_ENRICHMENT=true`이고 실제 ChatKHU·지도 모드라면 기존 API HUB 검색 키로 블로그 결과를 자동 수집합니다.
+활성 추천 경로는 장소·이동시간·선택적인 블로그 검색 결과를 `RecommendationInputs`로 전달해 같은 정책으로 계산합니다.
+자동 수집 시 `blog_enrichment.connection_status: live`, `provider: naver_api_hub`와 실제 검색 호출 수를 반환합니다.
+후기 검색·추출 실패는 해당 근거만 미확인으로 처리하며 기존 추천 평가를 계속합니다.
+필수 조건은 후기만으로 통과시키지 않습니다. 활성화·한도·검증 범위는 [블로그 연결](BLOG.md)을 참고하세요.
 입력 데이터 계약, 필수/선택 항목, 추출 콜백, 모의 요청·응답과 연결 상태는
 [팀원 데이터 계약 초안](TEAM_RECOMMENDATION_DATA_CONTRACT.md)을 참고하세요.

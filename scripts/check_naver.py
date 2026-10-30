@@ -12,6 +12,7 @@ from pathlib import Path
 from dotenv import dotenv_values
 
 from app.clients import naver_client as naver
+from app.clients import blog_client
 from app.config import settings
 from app.errors import ApiError
 
@@ -29,13 +30,15 @@ def warn_env_conflicts(names, *, env_path=None):
         print("To use .env in this terminal, run: unset " + " ".join(conflicts))
 
 
-async def run_checks(*, search: bool, maps: bool) -> int:
+async def run_checks(*, search: bool, maps: bool, blog: bool = False) -> int:
     required = []
-    if search:
+    if search or blog:
         required += ["NAVER_CLIENT_ID", "NAVER_CLIENT_SECRET"]
     if maps:
         required += ["NCP_MAPS_KEY_ID", "NCP_MAPS_KEY"]
     endpoint_names = (["NAVER_SEARCH_URL"] if search else []) + (["NCP_MAPS_BASE"] if maps else [])
+    if blog:
+        endpoint_names.append("NAVER_BLOG_URL")
     warn_env_conflicts(required + endpoint_names + ["MAPS_TIMEOUT_SECONDS"])
     missing = [name for name in required if not getattr(settings, name).strip()]
     if missing:
@@ -58,6 +61,10 @@ async def run_checks(*, search: bool, maps: bool) -> int:
         except ApiError as error:
             failures += 1
             print(f"{label}: FAIL ({error.detail['message']})")
+        except blog_client.BlogSearchError as error:
+            failures += 1
+            status = f", HTTP {error.http_status}" if error.http_status is not None else ""
+            print(f"{label}: FAIL ({error.code}{status})")
         except Exception:
             failures += 1
             print(f"{label}: FAIL (check URL, credentials, permissions and network)")
@@ -65,6 +72,11 @@ async def run_checks(*, search: bool, maps: bool) -> int:
     try:
         if search:
             await check("NAVER API HUB Local Search", lambda: naver.local_search("강남역 카페", display=1))
+        if blog:
+            async def check_blog():
+                await blog_client.search_blogs("강남역 카페", display=1)
+                return True  # An authenticated empty result is also a successful check.
+            await check("NAVER API HUB Blog Search", check_blog)
         if maps:
             await check("NCP Geocoding", lambda: naver.address_geocode("분당구 불정로 6"))
             await check("NCP Reverse Geocoding", lambda: naver.area_name(37.4979, 127.0276))
@@ -81,9 +93,11 @@ def main():
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--search", action="store_true", help="Local Search: 1 request")
     group.add_argument("--maps", action="store_true", help="Geocoding, Reverse Geocoding, Directions 5: 3 requests")
-    group.add_argument("--all", action="store_true", help="Search + Maps: 4 requests")
+    group.add_argument("--blog", action="store_true", help="Blog Search: 1 request; no AI extraction")
+    group.add_argument("--all", action="store_true", help="Local Search + Blog Search + Maps: 5 requests")
     args = parser.parse_args()
-    return asyncio.run(run_checks(search=args.search or args.all, maps=args.maps or args.all))
+    return asyncio.run(run_checks(search=args.search or args.all, maps=args.maps or args.all,
+                                  blog=args.blog or args.all))
 
 
 if __name__ == "__main__":

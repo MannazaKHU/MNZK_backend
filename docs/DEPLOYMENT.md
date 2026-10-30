@@ -139,6 +139,7 @@ Railway에는 로컬 Compose를 올리지 않고 아래 Dockerfile·Railway 설�
 | `MAPS_PROVIDER` | 아직 지도 키가 없다면 `mock`, 실제 장소 검색은 `naver` |
 | `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET` | MAPS_PROVIDER=naver일 때 NAVER API HUB 인증 |
 | `NCP_MAPS_KEY_ID`, `NCP_MAPS_KEY` | MAPS_PROVIDER=naver일 때 NCP Maps 인증 |
+| `ENABLE_BLOG_ENRICHMENT` | 블로그 근거 자동 보완 시 true. 같은 API HUB Application에 블로그 API 추가 필요 |
 
 `POSTGRES_PASSWORD`는 로컬 Compose용이며 Railway가 Supabase에 연결할 때는 DATABASE_URL에 포함된 비밀번호를 사용합니다.
 production에서는 임시 SQLite 파일을 DB로 사용할 수 없습니다.
@@ -146,16 +147,22 @@ production에서는 임시 SQLite 파일을 DB로 사용할 수 없습니다.
 
 ## 6. 프론트 공개 주소 연결
 
-프론트 API 기본 주소를 Railway의 HTTPS 주소로 설정합니다.
+프론트 API 기본 주소를 백엔드 Railway 서비스의 HTTPS 주소로 설정합니다.
 정확한 환경변수 이름은 프론트 프로젝트의 프레임워크·코드에 맞게 지정합니다.
 
-예를 들어 프론트 origin이 `https://frontend.example.com`이면:
+프론트 공개 주소는 `https://mannajaku-flutter-production-75f1.up.railway.app`이며,
+프론트 서버의 내부 수신 포트는 `8080`입니다.
+백엔드 Railway 서비스의 Variables에 다음 값을 설정합니다.
 
 ```dotenv
-CORS_ORIGINS=https://frontend.example.com
+CORS_ORIGINS=https://mannajaku-flutter-production-75f1.up.railway.app
 ```
 
-이 값은 예시입니다. 실제 심사용 웹 주소로 교체해야 합니다.
+공개 HTTPS 접속은 Railway가 내부 `8080` 포트로 전달하므로 공개 주소나 CORS origin에
+`:8080`을 붙이지 않습니다. 프론트 내부 포트 때문에 백엔드의 `PORT`를 변경할 필요는 없습니다.
+로컬에서 프론트를 `8080`으로 실행할 때는 `http://localhost:8080` 또는
+`http://127.0.0.1:8080`을 사용합니다. 두 주소는 `.env.example`의 허용 목록에 포함되어 있습니다.
+로컬 `.env` 변경은 Railway Variables에 자동 반영되지 않으므로 배포 환경에도 별도로 적용합니다.
 심사위원 브라우저가 localhost API를 호출하도록 배포하면 접근할 수 없습니다.
 Supabase DB URI와 ChatKHU 키는 백엔드에만 설정합니다.
 이 프로젝트의 프론트는 Supabase Data API를 직접 호출할 필요가 없습니다.

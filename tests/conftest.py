@@ -3,6 +3,7 @@ import os
 os.environ["APP_ENV"] = "test"
 os.environ["AI_PROVIDER"] = "mock"
 os.environ["MAPS_PROVIDER"] = "mock"
+os.environ["ENABLE_BLOG_ENRICHMENT"] = "false"
 os.environ["DATABASE_URL"] = "sqlite://"
 
 import pytest

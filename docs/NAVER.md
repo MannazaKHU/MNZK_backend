@@ -1,6 +1,6 @@
 # 네이버 검색·지도 연결
 
-현재 백엔드는 NAVER API HUB 지역 검색과 NCP Maps REST API를 사용합니다.
+현재 백엔드는 NAVER API HUB 지역·블로그 검색과 NCP Maps REST API를 사용합니다.
 ChatKHU 설정과 독립적이며, `MAPS_PROVIDER=mock`이면 샘플 장소로 동작합니다.
 키를 채운 것만으로 실제 호출로 전환되지는 않습니다.
 
@@ -9,6 +9,7 @@ ChatKHU 설정과 독립적이며, `MAPS_PROVIDER=mock`이면 샘플 장소로 �
 | 서비스 | 활성화할 API | 환경변수 | 서버에서 하는 일 |
 |---|---|---|---|
 | NAVER API HUB | 검색 / 지역 검색 | `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET` | 역·건물 검색, 실제 가게 후보 수집 |
+| NAVER API HUB | 검색 / 블로그 검색 | 같은 검색 키 | 후보별 후기 요약문에서 조건의 추정 근거 보완 |
 | NCP Maps | Geocoding | `NCP_MAPS_KEY_ID`, `NCP_MAPS_KEY` | 주소 → 출발지 좌표 |
 | NCP Maps | Reverse Geocoding | 같은 Maps 키 | 중간 좌표 → 검색할 동네 |
 | NCP Maps | Directions 5 | 같은 Maps 키 | 참여자별 자동차 이동 거리·시간 |
@@ -37,6 +38,7 @@ NCP_MAPS_KEY_ID=
 NCP_MAPS_KEY=
 NCP_MAPS_BASE=https://maps.apigw.ntruss.com
 MAPS_TIMEOUT_SECONDS=10
+ENABLE_BLOG_ENRICHMENT=false
 ```
 
 `NAVER_SEARCH_URL`과 `NCP_MAPS_BASE`는 일반적으로 바꾸지 않습니다.
@@ -45,7 +47,7 @@ MAPS_TIMEOUT_SECONDS=10
 ## 3. 서비스 전환 전 개별 확인
 
 프로젝트 루트에서 실행합니다. 아래 명령은 `MAPS_PROVIDER=mock` 상태여도 **실제 외부 API**를 호출합니다.
-검색은 1회, 지도는 3회이며 이용량·과금이 발생할 수 있습니다. AI 호출이나 모임 데이터 저장은 없습니다.
+지역 검색·블로그 검색은 각각 1회, 지도는 3회이며 이용량·과금이 발생할 수 있습니다. AI 호출이나 모임 데이터 저장은 없습니다.
 키·외부 응답 본문은 출력하지 않습니다.
 
 검색만 확인:
@@ -60,7 +62,13 @@ MAPS_TIMEOUT_SECONDS=10
 .venv/bin/python -m scripts.check_naver --maps
 ```
 
-모두 한 번에 확인:
+블로그 권한 추가 후 블로그만 확인:
+
+```sh
+.venv/bin/python -m scripts.check_naver --blog
+```
+
+모두 한 번에 확인 (총 5회):
 
 ```sh
 .venv/bin/python -m scripts.check_naver --all
@@ -86,6 +94,8 @@ Railway 서비스의 Variables에 위 항목과 동일한 키·URL을 등록하�
 로컬 `.env` 변경은 Railway에 자동 반영되지 않습니다.
 새 연결 확인 명령은 변경된 Docker 이미지 배포 후 컨테이너에서도
 `python -m scripts.check_naver --all`로 실행할 수 있습니다.
+블로그 검색까지 자동 사용하려면 기존 Application에 블로그를 추가하고 `ENABLE_BLOG_ENRICHMENT=true`로 설정합니다.
+별도 키는 필요 없습니다. 한도·비용·실패 처리와 결과 필드는 [블로그 연동](BLOG.md)에 정리했습니다.
 
 배포 후 새 모임을 만들어 모든 참여자가 입력했을 때 실제 장소 추천이 나오는지 확인합니다.
 기존 mock 추천이 저장된 모임은 자동으로 다시 추천되지 않습니다.
