@@ -224,6 +224,7 @@ docker compose exec api python -m scripts.smoke_test --completion
 기존 `MOCK_MODE=1/0/true/false`도 읽지만 `AI_PROVIDER`와 `MAPS_PROVIDER` 설정이 우선합니다.
 
 네이버 키 발급·환경변수·개별 연결 확인·Railway 적용은 [네이버 연동 가이드](docs/NAVER.md)를 참고하세요.
+프론트 없이 모임 생성부터 추천 저장까지 확인하는 명령은 [API 흐름 테스트](docs/TESTING.md)에 있습니다.
 블로그 API를 기존 검색 Application에 추가했다면 [블로그 근거 연결](docs/BLOG.md)의 활성화 설정을 적용하세요.
 CLOVA 관련 변수와 JSON 저장용 `DATA_PATH`는 더 이상 사용하지 않습니다.
 
